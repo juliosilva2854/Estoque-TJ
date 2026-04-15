@@ -253,3 +253,52 @@ class WarehouseUpdate(BaseModel):
     location: Optional[str] = None
     description: Optional[str] = None
     active: Optional[bool] = None
+
+
+class OrderItemBase(BaseModel):
+    product_id: str
+    product_name: str
+    quantity: float
+    unit_price: float
+    total: float
+
+class OrderBase(BaseModel):
+    customer_name: str
+    customer_document: Optional[str] = None
+    customer_email: Optional[str] = None
+    customer_phone: Optional[str] = None
+    warehouse_id: Optional[str] = None
+    items: List[OrderItemBase]
+    subtotal: float
+    discount: float = 0
+    total: float
+    payment_method: Optional[str] = None
+    type: Literal["pedido", "orcamento"]
+    status: Literal["draft", "confirmed", "cancelled", "converted"] = "draft"
+    notes: Optional[str] = None
+    valid_until: Optional[str] = None
+
+class OrderCreate(OrderBase):
+    pass
+
+class Order(OrderBase):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    order_number: str
+    created_at: datetime
+    created_by: str
+
+class OrderUpdate(BaseModel):
+    status: Optional[Literal["draft", "confirmed", "cancelled", "converted"]] = None
+    notes: Optional[str] = None
+    payment_method: Optional[str] = None
+    warehouse_id: Optional[str] = None
+    valid_until: Optional[str] = None
+
+class CashFlowReport(BaseModel):
+    period: str
+    inflows: float
+    outflows: float
+    balance: float
+    inflow_details: List[dict]
+    outflow_details: List[dict]

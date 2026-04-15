@@ -3,7 +3,7 @@ import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
 import { notificationsAPI } from '../api';
 import {
   Home, Package, Warehouse, Users, FileText, ShoppingCart,
-  TrendingUp, LogOut, ClipboardList, UserCircle, BarChart3, Bell, Settings
+  TrendingUp, LogOut, ClipboardList, UserCircle, BarChart3, Bell, Settings, FileBox
 } from 'lucide-react';
 
 export const DashboardLayout = () => {
@@ -43,6 +43,7 @@ export const DashboardLayout = () => {
     { icon: UserCircle, label: 'Fornecedores', path: '/dashboard/suppliers', roles: ['dev', 'master', 'usuario'] },
     { icon: FileText, label: 'Notas Fiscais', path: '/dashboard/invoices', roles: ['dev', 'master', 'usuario'] },
     { icon: ShoppingCart, label: 'Vendas', path: '/dashboard/sales', roles: ['dev', 'master', 'usuario'] },
+    { icon: FileBox, label: 'Pedidos', path: '/dashboard/orders', roles: ['dev', 'master', 'usuario'] },
     { icon: BarChart3, label: 'Relatorios', path: '/dashboard/reports', roles: ['dev', 'master'] },
     { icon: Bell, label: 'Alertas', path: '/dashboard/alerts', roles: ['dev', 'master', 'usuario'] },
     { icon: TrendingUp, label: 'Auditoria', path: '/dashboard/audit', roles: ['dev', 'master'] },

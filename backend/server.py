@@ -1,5 +1,5 @@
-from fastapi import FastAPI, APIRouter, Depends, HTTPException, status, Header
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, APIRouter, Depends, HTTPException, status, Header, UploadFile, File, BackgroundTasks
+from fastapi.responses import JSONResponse, Response
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from typing import Optional, List
 import json
 import uuid
+import base64
 
 from models import (
     User, UserCreate, UserLogin, Token,
@@ -19,11 +20,15 @@ from models import (
     Invoice, InvoiceCreate, OCRRequest,
     Sale, SaleCreate,
     DashboardStats, StockAlert, FinancialReport, AuditLog,
-    AlertConfig, AlertConfigCreate, Notification, NotificationCreate
+    AlertConfig, AlertConfigCreate, Notification, NotificationCreate,
+    Order, OrderCreate, OrderUpdate, CashFlowReport
 )
 from auth import hash_password, verify_password, create_token, decode_token
 from audit import AuditLogger
 from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
+from email_service import send_email, build_stock_alert_email, build_invoice_pending_email, build_sale_completed_email
+from report_export import generate_financial_pdf, generate_financial_excel
+from nfe_parser import parse_nfe_xml
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -716,7 +721,7 @@ async def send_notification(notif_data: NotificationCreate, current_user: dict =
 # === CHECK AND TRIGGER STOCK ALERTS ===
 
 @api_router.post("/alerts/check-stock")
-async def check_and_send_stock_alerts(current_user: dict = Depends(get_current_user)):
+async def check_and_send_stock_alerts(background_tasks: BackgroundTasks, current_user: dict = Depends(get_current_user)):
     await require_role(current_user, ["dev", "master"])
     inventory = await db.inventory.find({}, {"_id": 0}).to_list(5000)
     alerts_sent = 0
@@ -738,7 +743,273 @@ async def check_and_send_stock_alerts(current_user: dict = Depends(get_current_u
                     }
                     await db.notifications.insert_one(notif)
                     alerts_sent += 1
+                if config.get('email_enabled') and config.get('email_address'):
+                    subject, html = build_stock_alert_email(product['name'], warehouse['name'], item['quantity'], product.get('min_stock', 0))
+                    background_tasks.add_task(send_email, config['email_address'], subject, html)
+                if config.get('mobile_enabled') and config.get('phone_number'):
+                    sms_log = {
+                        "id": str(uuid.uuid4()),
+                        "phone": config['phone_number'],
+                        "message": f"[Gestao TJ] Estoque baixo: {product['name']} ({item['quantity']}/{product.get('min_stock', 0)}) em {warehouse['name']}",
+                        "status": "simulated",
+                        "created_at": datetime.now(timezone.utc).isoformat()
+                    }
+                    await db.sms_logs.insert_one(sms_log)
     return {"message": f"{alerts_sent} alerts sent"}
+
+# === FILE UPLOAD FOR INVOICES ===
+
+@api_router.post("/invoices/upload")
+async def upload_invoice_file(file: UploadFile = File(...), current_user: dict = Depends(get_current_user)):
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No file provided")
+    
+    content = await file.read()
+    filename_lower = file.filename.lower()
+    
+    if filename_lower.endswith('.xml'):
+        try:
+            parsed = parse_nfe_xml(content)
+            return {"source": "xml", "data": parsed}
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+    
+    elif filename_lower.endswith('.pdf'):
+        try:
+            api_key = os.environ.get('EMERGENT_LLM_KEY')
+            if not api_key:
+                raise HTTPException(status_code=500, detail="LLM API key not configured")
+            
+            b64 = base64.b64encode(content).decode('utf-8')
+            
+            chat = LlmChat(
+                api_key=api_key,
+                session_id=f"pdf_{current_user['user_id']}_{datetime.now(timezone.utc).timestamp()}",
+                system_message="You are an expert at extracting data from Brazilian fiscal invoices (NFe). Extract all relevant information in JSON format."
+            ).with_model("openai", "gpt-4o")
+            
+            image_content = ImageContent(image_base64=b64)
+            
+            prompt_text = 'Extract the following information from this Brazilian invoice and return ONLY a valid JSON object with this structure: {"invoice_number": "number", "supplier_name": "name", "supplier_cnpj": "", "issue_date": "YYYY-MM-DD", "total_value": 0.0, "tax_value": 0.0, "items": [{"product_name": "name", "product_sku": "", "quantity": 0.0, "unit_price": 0.0, "total": 0.0, "tax": 0}]}. Return ONLY JSON.'
+            
+            user_message = UserMessage(text=prompt_text, file_contents=[image_content])
+            response = await chat.send_message(user_message)
+            
+            response_text = response.strip()
+            if response_text.startswith('```json'):
+                response_text = response_text[7:]
+            if response_text.startswith('```'):
+                response_text = response_text[3:]
+            if response_text.endswith('```'):
+                response_text = response_text[:-3]
+            
+            extracted = json.loads(response_text.strip())
+            return {"source": "pdf_ocr", "data": extracted}
+        except Exception as e:
+            logger.error(f"PDF parsing error: {e}")
+            raise HTTPException(status_code=500, detail=f"PDF parsing failed: {str(e)}")
+    else:
+        raise HTTPException(status_code=400, detail="Unsupported file type. Use PDF or XML.")
+
+# === REPORT EXPORT ENDPOINTS ===
+
+@api_router.get("/reports/cash-flow")
+async def get_cash_flow_report(period: str, current_user: dict = Depends(get_current_user)):
+    if period == "month":
+        start_date = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0).isoformat()
+        period_label = "Mes Atual"
+    else:
+        start_date = datetime.now(timezone.utc).replace(month=1, day=1, hour=0, minute=0, second=0).isoformat()
+        period_label = "Ano Atual"
+    
+    # Inflows: completed sales
+    sales = await db.sales.find({"created_at": {"$gte": start_date}, "status": "completed"}, {"_id": 0}).to_list(10000)
+    inflows = sum(s.get('total', 0) for s in sales)
+    inflow_details = [{"date": s.get('created_at', ''), "description": f"Venda {s.get('sale_number', '')}", "value": s.get('total', 0)} for s in sales[:20]]
+    
+    # Outflows: processed invoices (purchases)
+    invoices = await db.invoices.find({"created_at": {"$gte": start_date}, "type": "entrada"}, {"_id": 0}).to_list(10000)
+    outflows = sum(inv.get('total_value', 0) for inv in invoices)
+    outflow_details = [{"date": inv.get('created_at', ''), "description": f"NF {inv.get('invoice_number', '')}", "value": inv.get('total_value', 0)} for inv in invoices[:20]]
+    
+    return CashFlowReport(
+        period=period_label,
+        inflows=inflows,
+        outflows=outflows,
+        balance=inflows - outflows,
+        inflow_details=inflow_details,
+        outflow_details=outflow_details
+    )
+
+@api_router.get("/reports/export/pdf")
+async def export_financial_pdf(period: str, current_user: dict = Depends(get_current_user)):
+    # Build report data
+    if period == "month":
+        start_date = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0).isoformat()
+        period_label = "Mes Atual"
+    else:
+        start_date = datetime.now(timezone.utc).replace(month=1, day=1, hour=0, minute=0, second=0).isoformat()
+        period_label = "Ano Atual"
+    
+    sales = await db.sales.find({"created_at": {"$gte": start_date}, "status": "completed"}, {"_id": 0}).to_list(10000)
+    revenue = sum(s.get('total', 0) for s in sales)
+    cost = 0
+    for sale in sales:
+        for item in sale.get('items', []):
+            product = await db.products.find_one({"id": item.get('product_id')}, {"_id": 0})
+            if product:
+                cost += product.get('cost_price', 0) * item.get('quantity', 0)
+    
+    gross_profit = revenue - cost
+    profit_margin = (gross_profit / revenue * 100) if revenue > 0 else 0
+    
+    invoices = await db.invoices.find({"created_at": {"$gte": start_date}, "type": "entrada"}, {"_id": 0}).to_list(10000)
+    outflows = sum(inv.get('total_value', 0) for inv in invoices)
+    
+    report_data = {
+        "revenue": revenue, "cost": cost, "gross_profit": gross_profit,
+        "profit_margin": profit_margin, "expenses": 0, "net_profit": gross_profit,
+        "cash_flow": {"inflows": revenue, "outflows": outflows, "balance": revenue - outflows}
+    }
+    
+    pdf_bytes = generate_financial_pdf(report_data, period_label)
+    return Response(content=pdf_bytes, media_type="application/pdf",
+                    headers={"Content-Disposition": f"attachment; filename=relatorio_{period}.pdf"})
+
+@api_router.get("/reports/export/excel")
+async def export_financial_excel(period: str, current_user: dict = Depends(get_current_user)):
+    if period == "month":
+        start_date = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0).isoformat()
+        period_label = "Mes Atual"
+    else:
+        start_date = datetime.now(timezone.utc).replace(month=1, day=1, hour=0, minute=0, second=0).isoformat()
+        period_label = "Ano Atual"
+    
+    sales = await db.sales.find({"created_at": {"$gte": start_date}, "status": "completed"}, {"_id": 0}).to_list(10000)
+    revenue = sum(s.get('total', 0) for s in sales)
+    cost = 0
+    for sale in sales:
+        for item in sale.get('items', []):
+            product = await db.products.find_one({"id": item.get('product_id')}, {"_id": 0})
+            if product:
+                cost += product.get('cost_price', 0) * item.get('quantity', 0)
+    
+    gross_profit = revenue - cost
+    profit_margin = (gross_profit / revenue * 100) if revenue > 0 else 0
+    
+    invoices = await db.invoices.find({"created_at": {"$gte": start_date}, "type": "entrada"}, {"_id": 0}).to_list(10000)
+    outflows = sum(inv.get('total_value', 0) for inv in invoices)
+    
+    report_data = {
+        "revenue": revenue, "cost": cost, "gross_profit": gross_profit,
+        "profit_margin": profit_margin, "expenses": 0, "net_profit": gross_profit,
+        "cash_flow": {"inflows": revenue, "outflows": outflows, "balance": revenue - outflows}
+    }
+    
+    excel_bytes = generate_financial_excel(report_data, period_label)
+    return Response(content=excel_bytes,
+                    media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": f"attachment; filename=relatorio_{period}.xlsx"})
+
+# === ORDERS / QUOTES ENDPOINTS ===
+
+@api_router.post("/orders", response_model=Order)
+async def create_order(order_data: OrderCreate, current_user: dict = Depends(get_current_user)):
+    prefix = "PED" if order_data.type == "pedido" else "ORC"
+    last = await db.orders.find_one({"type": order_data.type}, {"_id": 0}, sort=[('created_at', -1)])
+    if last and 'order_number' in last:
+        num = int(last['order_number'][3:]) + 1
+    else:
+        num = 1
+    order_number = f"{prefix}{str(num).zfill(6)}"
+    
+    order = Order(
+        **order_data.model_dump(),
+        order_number=order_number,
+        created_at=datetime.now(timezone.utc),
+        created_by=current_user['user_id']
+    )
+    doc = order.model_dump()
+    doc['created_at'] = doc['created_at'].isoformat()
+    await db.orders.insert_one(doc)
+    
+    await audit_logger.log(current_user['user_id'], current_user['email'], "CREATE", "order", order.id)
+    return order
+
+@api_router.get("/orders")
+async def get_orders(type: Optional[str] = None, current_user: dict = Depends(get_current_user)):
+    query = {}
+    if type:
+        query["type"] = type
+    orders = await db.orders.find(query, {"_id": 0}).sort('created_at', -1).to_list(5000)
+    for o in orders:
+        o['created_at'] = datetime.fromisoformat(o['created_at'])
+    return [Order(**o) for o in orders]
+
+@api_router.patch("/orders/{order_id}")
+async def update_order(order_id: str, updates: OrderUpdate, current_user: dict = Depends(get_current_user)):
+    update_data = {k: v for k, v in updates.model_dump().items() if v is not None}
+    if not update_data:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    result = await db.orders.update_one({"id": order_id}, {"$set": update_data})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Order not found")
+    await audit_logger.log(current_user['user_id'], current_user['email'], "UPDATE", "order", order_id, update_data)
+    return {"message": "Order updated"}
+
+@api_router.post("/orders/{order_id}/convert-to-sale")
+async def convert_order_to_sale(order_id: str, current_user: dict = Depends(get_current_user)):
+    order_doc = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order_doc:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if order_doc['status'] == 'converted':
+        raise HTTPException(status_code=400, detail="Order already converted")
+    if not order_doc.get('warehouse_id'):
+        raise HTTPException(status_code=400, detail="Warehouse is required to convert to sale")
+    
+    # Create sale from order
+    last_sale = await db.sales.find_one({}, {"_id": 0}, sort=[('created_at', -1)])
+    sale_number = f"VND{str(int(last_sale['sale_number'][3:]) + 1).zfill(6)}" if last_sale and 'sale_number' in last_sale else "VND000001"
+    
+    sale_doc = {
+        "id": str(uuid.uuid4()),
+        "sale_number": sale_number,
+        "customer_name": order_doc.get('customer_name', ''),
+        "customer_document": order_doc.get('customer_document', ''),
+        "warehouse_id": order_doc['warehouse_id'],
+        "items": order_doc['items'],
+        "subtotal": order_doc['subtotal'],
+        "discount": order_doc.get('discount', 0),
+        "total": order_doc['total'],
+        "payment_method": order_doc.get('payment_method', 'dinheiro'),
+        "status": "completed",
+        "type": "venda",
+        "notes": order_doc.get('notes', ''),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_by": current_user['user_id']
+    }
+    await db.sales.insert_one(sale_doc)
+    
+    # Update order status
+    await db.orders.update_one({"id": order_id}, {"$set": {"status": "converted"}})
+    
+    # Adjust inventory
+    for item in order_doc['items']:
+        existing = await db.inventory.find_one({"product_id": item['product_id'], "warehouse_id": order_doc['warehouse_id']}, {"_id": 0})
+        if existing:
+            new_qty = existing['quantity'] - item['quantity']
+            await db.inventory.update_one({"id": existing['id']}, {"$set": {"quantity": new_qty, "updated_at": datetime.now(timezone.utc).isoformat()}})
+    
+    await audit_logger.log(current_user['user_id'], current_user['email'], "CONVERT", "order", order_id, {"sale_number": sale_number})
+    return {"message": f"Order converted to sale {sale_number}", "sale_number": sale_number}
+
+@api_router.delete("/orders/{order_id}")
+async def delete_order(order_id: str, current_user: dict = Depends(get_current_user)):
+    result = await db.orders.delete_one({"id": order_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Order not found")
+    await audit_logger.log(current_user['user_id'], current_user['email'], "DELETE", "order", order_id)
+    return {"message": "Order deleted"}
 
 @api_router.post("/seed")
 async def seed_database():

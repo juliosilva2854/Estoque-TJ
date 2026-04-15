@@ -3,15 +3,11 @@ import axios from 'axios';
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
 
-const api = axios.create({
-  baseURL: API,
-});
+const api = axios.create({ baseURL: API });
 
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
+  if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
 
@@ -71,11 +67,24 @@ export const invoicesAPI = {
   getAll: () => api.get('/invoices'),
   create: (data) => api.post('/invoices', data),
   processOCR: (imageBase64) => api.post('/invoices/ocr', { image_base64: imageBase64 }),
+  uploadFile: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/invoices/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+  },
 };
 
 export const salesAPI = {
   getAll: () => api.get('/sales'),
   create: (data) => api.post('/sales', data),
+};
+
+export const ordersAPI = {
+  getAll: (type) => api.get(`/orders${type ? `?type=${type}` : ''}`),
+  create: (data) => api.post('/orders', data),
+  update: (id, data) => api.patch(`/orders/${id}`, data),
+  convertToSale: (id) => api.post(`/orders/${id}/convert-to-sale`),
+  delete: (id) => api.delete(`/orders/${id}`),
 };
 
 export const dashboardAPI = {
@@ -85,11 +94,12 @@ export const dashboardAPI = {
 
 export const reportsAPI = {
   getFinancial: (period) => api.get(`/reports/financial?period=${period}`),
+  getCashFlow: (period) => api.get(`/reports/cash-flow?period=${period}`),
+  exportPDF: (period) => api.get(`/reports/export/pdf?period=${period}`, { responseType: 'blob' }),
+  exportExcel: (period) => api.get(`/reports/export/excel?period=${period}`, { responseType: 'blob' }),
 };
 
-export const auditAPI = {
-  getLogs: () => api.get('/audit'),
-};
+export const auditAPI = { getLogs: () => api.get('/audit') };
 
 export const alertsAPI = {
   getConfigs: () => api.get('/alerts/config'),

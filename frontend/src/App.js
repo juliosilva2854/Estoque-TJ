@@ -17,6 +17,7 @@ import { AuditPage } from './components/AuditPage';
 import { UsersPage } from './components/UsersPage';
 import { WarehousesPage } from './components/WarehousesPage';
 import { AlertsPage } from './components/AlertsPage';
+import { OrdersPage } from './components/OrdersPage';
 
 const seedDatabase = async () => {
   try { await authAPI.seed(); } catch {}
@@ -39,6 +40,7 @@ function App() {
             <Route path="suppliers" element={<SuppliersPage />} />
             <Route path="invoices" element={<InvoicesPage />} />
             <Route path="sales" element={<SalesPage />} />
+            <Route path="orders" element={<OrdersPage />} />
             <Route path="reports" element={<ReportsPage />} />
             <Route path="alerts" element={<AlertsPage />} />
             <Route path="audit" element={<AuditPage />} />
