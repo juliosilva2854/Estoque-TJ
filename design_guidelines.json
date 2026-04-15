@@ -1,0 +1,99 @@
+{
+  "theme_selection": {
+    "theme": "Light",
+    "archetype": "Archetype 4 (Swiss & High-Contrast)",
+    "reasoning": "A financial and stock management system demands absolute clarity, authority, and low cognitive load. We use a high-contrast 'Swiss' aesthetic with a stark white base, neutral grays, and a sharp primary blue to direct attention to critical data without visual clutter. This aligns perfectly with the user's request for a 'lighter and more intuitive design'."
+  },
+  "color_palette": {
+    "background": "#FAFAFA",
+    "surface": "#FFFFFF",
+    "primary": "#2563EB",
+    "primary_hover": "#1D4ED8",
+    "text_main": "#09090B",
+    "text_muted": "#71717A",
+    "border": "#E4E4E7",
+    "success_bg": "#DCFCE7",
+    "success_text": "#16A34A",
+    "warning_bg": "#FEF9C3",
+    "warning_text": "#EAB308",
+    "danger_bg": "#FEE2E2",
+    "danger_text": "#DC2626",
+    "sidebar_bg": "#FFFFFF",
+    "sidebar_active": "#F4F4F5"
+  },
+  "typography": {
+    "primary_font": "Outfit",
+    "primary_font_fallback": "sans-serif",
+    "secondary_font": "IBM Plex Sans",
+    "secondary_font_fallback": "sans-serif",
+    "mono_font": "JetBrains Mono",
+    "hierarchy": {
+      "h1": "text-4xl sm:text-5xl font-semibold tracking-tight text-zinc-950",
+      "h2": "text-2xl sm:text-3xl font-medium tracking-tight text-zinc-900",
+      "h3": "text-xl sm:text-2xl font-medium tracking-tight text-zinc-900",
+      "h4": "text-lg font-medium text-zinc-900",
+      "body": "text-base text-zinc-700 leading-relaxed font-secondary",
+      "small_label": "text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500",
+      "data_numbers": "font-mono text-sm text-zinc-800"
+    }
+  },
+  "spacing_and_layout": {
+    "philosophy": "Functional whitespace. The system is data-heavy (invoices, stock), so cards must have generous internal padding (p-6) to prevent claustrophobia. The grid follows the 'Control Room' protocol.",
+    "dashboard_grid": "grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6",
+    "container_padding": "p-6 md:p-8",
+    "card_style": "bg-white rounded-xl border border-zinc-200 shadow-sm overflow-hidden",
+    "sidebar_width": "w-64 flex-shrink-0 border-r border-zinc-200 bg-white"
+  },
+  "components_strategy": {
+    "buttons": "Shadcn UI button. Flat design, rounded-lg. Primary: bg-blue-600 text-white hover:bg-blue-700 hover:-translate-y-[1px] transition-all. Avoid heavy shadows.",
+    "inputs_and_forms": "Shadcn UI Input/Select. Flat, rounded-lg, border-zinc-200. Focus ring: ring-2 ring-blue-600/20 border-blue-600. No native datepickers; use Shadcn Calendar.",
+    "tables": "Crucial for 'Gestão TJ'. Use Shadcn Table. Header: text-xs uppercase tracking-wider text-zinc-500 bg-zinc-50. Rows: border-b border-zinc-100 hover:bg-zinc-50/50. Align numbers/currency to the right.",
+    "modals": "Shadcn Dialog. Backdrop blur (backdrop-blur-sm bg-zinc-950/20) to maintain focus. Modal surface must be flat white, p-6.",
+    "charts": "Recharts / Shadcn Charts. Use minimalist line charts for DRE and bar charts for Stock levels. Remove heavy grid lines (use stroke-dasharray '3 3' stroke '#E4E4E7'). Tooltips must have shadow-lg and rounded-lg.",
+    "cards": "Never stack nested cards. Use a single level of elevation. Use 'Neumorphism' clay crisp style: 1px border grounding it, soft shadow.",
+    "badges": "For stock status, user roles, invoice status. Rounded-full, px-2.5 py-0.5 text-xs font-medium."
+  },
+  "motion_and_interactions": {
+    "hover_states": "All interactive elements must have a subtle background color shift and a slight translation. e.g., hover:bg-zinc-100 transition-colors duration-200.",
+    "focus_states": "Accessibility first: focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2.",
+    "page_transitions": "Framer Motion. Simple fade in: initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}.",
+    "list_stagger": "When loading rows of stock or invoices, stagger the entrance by 0.05s."
+  },
+  "media": {
+    "logos": [
+      {
+        "category": "brand_logo",
+        "url": "https://static.prod-images.emergentagent.com/jobs/497729d9-514c-4803-80ed-8a3ab244b06b/images/458af5ac6c2ba33b5f4d33a8680f7a6b75c879b0b4f7c72992f0f5d5019b7edc.png",
+        "description": "Geometric stylized 'TJ' monogram representing Gestão TJ inventory and accounting software."
+      }
+    ],
+    "backgrounds": [
+      {
+        "category": "auth_background",
+        "url": "https://static.prod-images.emergentagent.com/jobs/497729d9-514c-4803-80ed-8a3ab244b06b/images/2ffc36ea4ce1c2315d3534be85f9d91bb6629f3c60b0dc6cd812df4c6552ff3f.png",
+        "description": "A light, minimalist abstract 3D geometric background for the login page, conveying efficiency and modern software."
+      },
+      {
+        "category": "marketing_background",
+        "url": "https://images.unsplash.com/photo-1664813953289-7c3350f040e0?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1ODB8MHwxfHNlYXJjaHwxfHxtaW5pbWFsaXN0JTIwbW9kZXJuJTIwYXJjaGl0ZWN0dXJlJTIwd2hpdGV8ZW58MHx8fHwxNzc2MjU0Mzc3fDA&ixlib=rb-4.1.0&q=85",
+        "description": "Clean white architectural structure, useful for secondary marketing banners or empty states."
+      }
+    ]
+  },
+  "design_rules": {
+    "accessibility": "All text must pass APCA contrast ratio. Do not use generic grays for text. Apply 'data-testid' to all buttons, links, and forms for testing.",
+    "borders": "Always use subtle borders (border-zinc-200) rather than relying solely on shadows to separate dashboard regions.",
+    "data_density": "Stock tracking and DRE tables should be dense but readable. Use small text sizes (text-sm) combined with adequate row heights (h-12).",
+    "forbidden_patterns": ["Inter font for headings", "Centering everything", "Dark theme (as default)", "Muddy/low contrast grays", "Gradient overload"]
+  },
+  "instructions_to_main_agent": [
+    "Install specific fonts via Google Fonts: Outfit (headings), IBM Plex Sans (body), JetBrains Mono (data tables).",
+    "Install @phosphor-icons/react or lucide-react for sharp, consistent UI iconography.",
+    "Set up Tailwind variables mapped to the color palette above. The neutral scale should be Zinc.",
+    "Do not build complex components (Tables, Datepickers) from scratch; strictly use Shadcn UI and style them using these guidelines.",
+    "When building the login screen, split it into two panes: left pane with the auth_background image (object-cover) and logo, right pane with the login form (pure white background).",
+    "For the 'Gestão TJ' dashboard layout, use a fixed sidebar with a top header and scrollable main content area.",
+    "Ensure the DRE and Financial reports use green (#16A34A) for positive margins and red (#DC2626) for negative/costs.",
+    "Add 'data-testid' attributes (e.g., 'data-testid=\"login-submit-btn\"', 'data-testid=\"stock-table\"') to all interactive or key display elements."
+  ]
+}
