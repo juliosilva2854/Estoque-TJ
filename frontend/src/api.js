@@ -97,6 +97,8 @@ export const reportsAPI = {
   getCashFlow: (period) => api.get(`/reports/cash-flow?period=${period}`),
   exportPDF: (period) => api.get(`/reports/export/pdf?period=${period}`, { responseType: 'blob' }),
   exportExcel: (period) => api.get(`/reports/export/excel?period=${period}`, { responseType: 'blob' }),
+  getABCCurve: () => api.get('/reports/abc-curve'),
+  getInventoryTurnover: () => api.get('/reports/inventory-turnover'),
 };
 
 export const auditAPI = { getLogs: () => api.get('/audit') };

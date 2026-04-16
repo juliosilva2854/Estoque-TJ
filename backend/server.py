@@ -546,6 +546,82 @@ async def get_financial_report(period: str, current_user: dict = Depends(get_cur
         net_profit=gross_profit
     )
 
+# === ADVANCED REPORTS ===
+
+@api_router.get("/reports/abc-curve")
+async def get_abc_curve(current_user: dict = Depends(get_current_user)):
+    sales = await db.sales.find({"status": "completed"}, {"_id": 0}).to_list(10000)
+    product_revenue = {}
+    for sale in sales:
+        for item in sale.get('items', []):
+            pid = item.get('product_id', '')
+            pname = item.get('product_name', '')
+            rev = item.get('total', 0)
+            if pid in product_revenue:
+                product_revenue[pid]['revenue'] += rev
+                product_revenue[pid]['quantity'] += item.get('quantity', 0)
+            else:
+                product_revenue[pid] = {'product_id': pid, 'product_name': pname, 'revenue': rev, 'quantity': item.get('quantity', 0)}
+    
+    items = sorted(product_revenue.values(), key=lambda x: x['revenue'], reverse=True)
+    total_rev = sum(i['revenue'] for i in items)
+    
+    cumulative = 0
+    for item in items:
+        cumulative += item['revenue']
+        pct = (cumulative / total_rev * 100) if total_rev > 0 else 0
+        item['percentage'] = round(item['revenue'] / total_rev * 100, 1) if total_rev > 0 else 0
+        item['cumulative'] = round(pct, 1)
+        if pct <= 80:
+            item['class'] = 'A'
+        elif pct <= 95:
+            item['class'] = 'B'
+        else:
+            item['class'] = 'C'
+    
+    return {"items": items, "total_revenue": total_rev}
+
+@api_router.get("/reports/inventory-turnover")
+async def get_inventory_turnover(current_user: dict = Depends(get_current_user)):
+    products = await db.products.find({"active": True}, {"_id": 0}).to_list(5000)
+    sales = await db.sales.find({"status": "completed"}, {"_id": 0}).to_list(10000)
+    
+    product_sales = {}
+    for sale in sales:
+        for item in sale.get('items', []):
+            pid = item.get('product_id', '')
+            qty = item.get('quantity', 0)
+            product_sales[pid] = product_sales.get(pid, 0) + qty
+    
+    inventory = await db.inventory.find({}, {"_id": 0}).to_list(5000)
+    product_stock = {}
+    for inv in inventory:
+        pid = inv.get('product_id', '')
+        product_stock[pid] = product_stock.get(pid, 0) + inv.get('quantity', 0)
+    
+    results = []
+    for p in products:
+        pid = p['id']
+        sold = product_sales.get(pid, 0)
+        stock = product_stock.get(pid, 0)
+        avg_stock = stock if stock > 0 else 1
+        turnover = round(sold / avg_stock, 2) if avg_stock > 0 else 0
+        days_cover = round(avg_stock / (sold / 30), 0) if sold > 0 else 999
+        
+        results.append({
+            'product_id': pid,
+            'product_name': p['name'],
+            'sku': p['sku'],
+            'total_sold': sold,
+            'current_stock': stock,
+            'turnover_rate': turnover,
+            'days_of_coverage': min(days_cover, 999),
+            'status': 'critico' if days_cover < 7 else 'baixo' if days_cover < 15 else 'normal' if days_cover < 60 else 'excesso'
+        })
+    
+    results.sort(key=lambda x: x['turnover_rate'], reverse=True)
+    return {"items": results}
+
 @api_router.get("/audit", response_model=List[AuditLog])
 async def get_audit_logs(current_user: dict = Depends(get_current_user)):
     await require_role(current_user, ["dev", "master"])
