@@ -613,53 +613,51 @@ async def export_audit_logs(current_user: dict = Depends(get_current_user)):
                     headers={"Content-Disposition": "attachment; filename=auditoria.xlsx"})
 
 @api_router.post("/invoices/{invoice_id}/process-items")
-async def process_invoice_items_to_products(invoice_id: str, warehouse_id: str, current_user: dict = Depends(get_current_user)):
+async def process_invoice_items_to_products(invoice_id: str, current_user: dict = Depends(get_current_user)):
     invoice_doc = await db.invoices.find_one({"id": invoice_id}, {"_id": 0})
     if not invoice_doc:
-        raise HTTPException(status_code=404, detail="Invoice not found")
+        raise HTTPException(status_code=404, detail="Nota nao encontrada")
     created = 0
+    updated = 0
     for item in invoice_doc.get('items', []):
         pname = item.get('product_name', '')
         if not pname:
             continue
         sku = item.get('product_sku', '') or pname[:10].upper().replace(' ', '')
-        existing = await db.products.find_one({"$or": [{"sku": sku}, {"name": pname}]}, {"_id": 0})
-        if not existing:
+        qty = item.get('quantity', 0)
+        existing = await db.products.find_one({"sku": sku}, {"_id": 0})
+        if existing:
+            new_avail = existing.get('available_qty', 0) + qty
+            await db.products.update_one({"id": existing['id']}, {"$set": {"available_qty": new_avail}})
+            updated += 1
+        else:
             prod_doc = {
                 "id": str(uuid.uuid4()), "name": pname, "sku": sku, "description": "",
                 "category": "", "unit": "UN", "min_stock": 0,
                 "cost_price": item.get('unit_price', 0), "sale_price": item.get('unit_price', 0),
+                "available_qty": qty,
                 "active": True, "created_at": datetime.now(timezone.utc).isoformat(),
                 "created_by": current_user['user_id']
             }
             await db.products.insert_one(prod_doc)
-            existing = prod_doc
             created += 1
-        else:
-            existing = existing
-        pid = existing['id']
-        qty = item.get('quantity', 0)
-        inv_item = await db.inventory.find_one({"product_id": pid, "warehouse_id": warehouse_id}, {"_id": 0})
-        if inv_item:
-            new_qty = inv_item['quantity'] + qty
-            await db.inventory.update_one({"id": inv_item['id']}, {"$set": {"quantity": new_qty, "updated_at": datetime.now(timezone.utc).isoformat()}})
-        else:
-            await db.inventory.insert_one({
-                "id": str(uuid.uuid4()), "product_id": pid, "warehouse_id": warehouse_id,
-                "quantity": qty, "updated_at": datetime.now(timezone.utc).isoformat()
-            })
     await db.invoices.update_one({"id": invoice_id}, {"$set": {"status": "processed"}})
-    await audit_logger.log(current_user['user_id'], current_user['email'], "PROCESS", "invoice", invoice_id, {"products_created": created})
-    return {"message": f"Itens processados. {created} novos produtos criados.", "products_created": created}
+    await audit_logger.log(current_user['user_id'], current_user['email'], "PROCESS", "invoice", invoice_id, {"produtos_criados": created, "produtos_atualizados": updated})
+    return {"message": f"Itens enviados para aba Produtos. {created} novos, {updated} atualizados. Transfira para o deposito desejado.", "products_created": created}
 
 @api_router.post("/products/{product_id}/transfer")
-async def transfer_product_to_warehouse(product_id: str, warehouse_id: str, quantity: float, current_user: dict = Depends(get_current_user)):
+async def transfer_product_to_warehouse(product_id: str, warehouse_id: str, quantity: float, sector: str = "", current_user: dict = Depends(get_current_user)):
     product = await db.products.find_one({"id": product_id}, {"_id": 0})
     if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
+        raise HTTPException(status_code=404, detail="Produto nao encontrado")
     warehouse = await db.warehouses.find_one({"id": warehouse_id}, {"_id": 0})
     if not warehouse:
-        raise HTTPException(status_code=404, detail="Warehouse not found")
+        raise HTTPException(status_code=404, detail="Deposito nao encontrado")
+    
+    # Check if product has enough available quantity
+    current_stock = product.get('available_qty', quantity)
+    
+    # Add to inventory
     inv_item = await db.inventory.find_one({"product_id": product_id, "warehouse_id": warehouse_id}, {"_id": 0})
     if inv_item:
         new_qty = inv_item['quantity'] + quantity
@@ -669,8 +667,17 @@ async def transfer_product_to_warehouse(product_id: str, warehouse_id: str, quan
             "id": str(uuid.uuid4()), "product_id": product_id, "warehouse_id": warehouse_id,
             "quantity": quantity, "updated_at": datetime.now(timezone.utc).isoformat()
         })
-    await audit_logger.log(current_user['user_id'], current_user['email'], "TRANSFER", "product", product_id, {"warehouse_id": warehouse_id, "quantity": quantity})
-    return {"message": f"Transferido {quantity} unidades para {warehouse['name']}"}
+    
+    # Reduce available_qty on product. If zero, delete the product from buffer
+    new_available = max(0, current_stock - quantity)
+    if new_available <= 0:
+        await db.products.delete_one({"id": product_id})
+        await audit_logger.log(current_user['user_id'], current_user['email'], "TRANSFER", "product", product_id, {"deposito": warehouse['name'], "setor": sector, "quantidade": quantity, "produto_removido": True})
+        return {"message": f"Transferido {quantity} unidades para {warehouse['name']}. Produto removido da aba produtos.", "removed": True}
+    else:
+        await db.products.update_one({"id": product_id}, {"$set": {"available_qty": new_available}})
+        await audit_logger.log(current_user['user_id'], current_user['email'], "TRANSFER", "product", product_id, {"deposito": warehouse['name'], "setor": sector, "quantidade": quantity, "restante": new_available})
+        return {"message": f"Transferido {quantity} unidades para {warehouse['name']}. Restam {new_available} na aba produtos.", "removed": False}
 
 @api_router.get("/audit", response_model=List[AuditLog])
 async def get_audit_logs(current_user: dict = Depends(get_current_user)):

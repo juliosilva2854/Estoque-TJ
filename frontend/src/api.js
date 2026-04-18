@@ -42,7 +42,7 @@ export const productsAPI = {
   create: (d) => api.post('/products', d),
   update: (id, d) => api.patch(`/products/${id}`, d),
   delete: (id) => api.delete(`/products/${id}`),
-  transfer: (id, warehouseId, qty) => api.post(`/products/${id}/transfer?warehouse_id=${warehouseId}&quantity=${qty}`),
+  transfer: (id, warehouseId, qty, sector) => api.post(`/products/${id}/transfer?warehouse_id=${warehouseId}&quantity=${qty}&sector=${encodeURIComponent(sector || '')}`),
 };
 export const inventoryAPI = {
   getAll: () => api.get('/inventory'),
@@ -53,7 +53,7 @@ export const invoicesAPI = {
   create: (d) => api.post('/invoices', d),
   processOCR: (b64) => api.post('/invoices/ocr', { image_base64: b64 }),
   uploadFile: (file) => { const fd = new FormData(); fd.append('file', file); return api.post('/invoices/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } }); },
-  processItems: (invoiceId, warehouseId) => api.post(`/invoices/${invoiceId}/process-items?warehouse_id=${warehouseId}`),
+  processItems: (invoiceId) => api.post(`/invoices/${invoiceId}/process-items`),
 };
 export const dashboardAPI = {
   getStats: () => api.get('/dashboard/stats'),

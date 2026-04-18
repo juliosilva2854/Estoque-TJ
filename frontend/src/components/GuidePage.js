@@ -125,7 +125,7 @@ export const GuidePage = () => {
                 <ul className="space-y-2">
                   {section.items.map((item, i) => (
                     <li key={i} className={`text-sm text-zinc-700 leading-relaxed ${item.startsWith('  -') ? 'ml-4 text-zinc-600' : ''}`}>
-                      {item.startsWith('  -') ? item : <span>{item}</span>}
+                      {item}
                     </li>
                   ))}
                 </ul>
@@ -133,6 +133,70 @@ export const GuidePage = () => {
             </div>
           );
         })}
+      </div>
+
+      {/* Como rodar localmente */}
+      <div className="mt-8 bg-white rounded-xl border border-zinc-200 shadow-sm overflow-hidden">
+        <div className="flex items-center gap-3 p-5 bg-zinc-50 border-b border-zinc-200">
+          <div className="h-10 w-10 rounded-lg bg-green-50 flex items-center justify-center flex-shrink-0">
+            <HelpCircle className="h-5 w-5 text-green-600" />
+          </div>
+          <h2 className="text-lg font-semibold text-zinc-900">Como Rodar Localmente</h2>
+        </div>
+        <div className="p-5 space-y-4">
+          <div>
+            <h3 className="text-sm font-semibold text-zinc-900 mb-2">1. Pre-requisitos</h3>
+            <ul className="text-sm text-zinc-700 space-y-1 ml-4">
+              <li>- Python 3.11 ou superior</li>
+              <li>- Node.js 18 ou superior</li>
+              <li>- MongoDB 6 ou superior (ou MongoDB Atlas gratuito)</li>
+              <li>- Yarn (instalador de pacotes): npm install -g yarn</li>
+            </ul>
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-zinc-900 mb-2">2. Backend</h3>
+            <div className="bg-zinc-900 text-zinc-100 rounded-lg p-4 text-xs font-mono overflow-x-auto space-y-0.5">
+              <p>cd backend</p>
+              <p>python -m venv venv</p>
+              <p># Windows: venv\Scripts\activate</p>
+              <p># Mac/Linux: source venv/bin/activate</p>
+              <p>pip install -r requirements.txt</p>
+            </div>
+            <p className="text-sm text-zinc-600 mt-2">Crie <strong>backend/.env</strong>:</p>
+            <div className="bg-zinc-900 text-zinc-100 rounded-lg p-4 text-xs font-mono overflow-x-auto space-y-0.5">
+              <p>MONGO_URL=mongodb://localhost:27017</p>
+              <p>DB_NAME=gestao_tj_db</p>
+              <p>JWT_SECRET=chave_secreta_com_32_caracteres_minimo</p>
+              <p>CORS_ORIGINS=http://localhost:3000</p>
+              <p>EMERGENT_LLM_KEY=sua_chave_openai</p>
+            </div>
+            <p className="text-sm text-zinc-600 mt-2">Iniciar:</p>
+            <div className="bg-zinc-900 text-zinc-100 rounded-lg p-4 text-xs font-mono">uvicorn server:app --host 0.0.0.0 --port 8001 --reload</div>
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-zinc-900 mb-2">3. Frontend</h3>
+            <div className="bg-zinc-900 text-zinc-100 rounded-lg p-4 text-xs font-mono overflow-x-auto space-y-0.5">
+              <p>cd frontend</p>
+              <p>yarn install</p>
+            </div>
+            <p className="text-sm text-zinc-600 mt-2">Crie <strong>frontend/.env</strong>:</p>
+            <div className="bg-zinc-900 text-zinc-100 rounded-lg p-4 text-xs font-mono">REACT_APP_BACKEND_URL=http://localhost:8001</div>
+            <p className="text-sm text-zinc-600 mt-2">Iniciar:</p>
+            <div className="bg-zinc-900 text-zinc-100 rounded-lg p-4 text-xs font-mono">yarn start</div>
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-zinc-900 mb-2">4. Primeiro Acesso</h3>
+            <p className="text-sm text-zinc-700">Abra http://localhost:3000. O sistema cria 3 usuarios automaticamente:</p>
+            <ul className="text-sm text-zinc-700 space-y-1 ml-4 mt-1">
+              <li>- admin@gestaotj.com / Admin@123456</li>
+              <li>- gerente@gestaotj.com / Gerente@123</li>
+              <li>- usuario@gestaotj.com / Usuario@123</li>
+            </ul>
+          </div>
+          <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <p className="text-sm text-blue-800"><strong>MongoDB Atlas:</strong> Se nao quiser instalar MongoDB local, use atlas.mongodb.com (gratuito). Crie um cluster e use a URL de conexao no MONGO_URL.</p>
+          </div>
+        </div>
       </div>
     </div>
   );
