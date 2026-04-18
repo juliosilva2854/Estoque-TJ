@@ -1,17 +1,105 @@
 import React from 'react';
-import { FileText, Package, Warehouse, ClipboardList, UserCircle, BarChart3, Bell, Users, TrendingUp, HelpCircle } from 'lucide-react';
+import { Home, Package, Warehouse, ClipboardList, UserCircle, FileText, BarChart3, Bell, TrendingUp, Users, HelpCircle } from 'lucide-react';
 
-const steps = [
-  { icon: HelpCircle, title: '1. Acesse o Sistema', desc: 'Faca login com seu email e senha. Existem 3 niveis de acesso: Dev (acesso total), Master (gerente) e Usuario (operacional).' },
-  { icon: Warehouse, title: '2. Cadastre Depositos', desc: 'Va em "Depositos" e cadastre os locais de armazenamento. Voce pode criar setores dentro de cada deposito para organizar melhor os produtos.' },
-  { icon: UserCircle, title: '3. Cadastre Fornecedores', desc: 'Va em "Fornecedores" e registre seus parceiros com nome, CNPJ, contato e endereco.' },
-  { icon: FileText, title: '4. Importe Notas Fiscais', desc: 'Va em "Notas Fiscais" e faca upload de arquivos PDF ou XML (NFe). O sistema extrai automaticamente os dados. Voce tambem pode escanear imagens com OCR/IA.' },
-  { icon: Package, title: '5. Processe os Itens da Nota', desc: 'Apos salvar a nota fiscal, clique em "Processar Itens" e selecione o deposito. Os produtos serao criados automaticamente e o estoque sera atualizado.' },
-  { icon: ClipboardList, title: '6. Controle o Estoque', desc: 'A aba "Estoque" mostra todos os produtos por deposito com status (OK ou Baixo). Use "Transferir para Deposito" na aba Produtos para mover mercadorias.' },
-  { icon: Bell, title: '7. Configure Alertas', desc: 'Va em "Alertas" > "Configuracoes" e crie alertas para estoque baixo. Voce pode receber por notificacao interna, email ou SMS.' },
-  { icon: BarChart3, title: '8. Acompanhe Relatorios', desc: 'A aba "Relatorios" mostra o DRE (receita, custo, lucro), Curva ABC (produtos mais vendidos) e Giro de Estoque. Exporte para PDF ou Excel.' },
-  { icon: TrendingUp, title: '9. Monitore a Auditoria', desc: 'Todas as acoes sao registradas. Use filtros por data, usuario, acao e entidade. Exporte o historico completo para Excel.' },
-  { icon: Users, title: '10. Gerencie Usuarios', desc: 'Administradores podem criar, editar, ativar/desativar e excluir usuarios. Cada nivel de acesso tem permissoes diferentes no sistema.' },
+const sections = [
+  {
+    icon: Home, title: 'Dashboard',
+    items: [
+      'Ao acessar o sistema, voce vera o painel principal com as informacoes resumidas.',
+      'Os cards mostram: total de produtos cadastrados, fornecedores, depositos, notas fiscais pendentes e alertas de estoque.',
+      'Se houver produtos com estoque abaixo do minimo configurado, eles aparecerao na secao de alertas vermelhos.',
+    ]
+  },
+  {
+    icon: Package, title: 'Produtos',
+    items: [
+      'Nesta aba voce cadastra todos os produtos que serao controlados no sistema.',
+      'Clique em "Novo Produto" para adicionar. Preencha: nome, SKU (codigo unico), descricao, categoria, unidade e custo de compra.',
+      'Use a busca para encontrar produtos por nome ou SKU.',
+      'O botao de setas (Transferir) envia o produto para um deposito especifico, adicionando ao estoque.',
+      'Voce pode editar e excluir produtos a qualquer momento.',
+      'Quando uma nota fiscal e processada, os produtos sao criados automaticamente aqui.',
+    ]
+  },
+  {
+    icon: Warehouse, title: 'Depositos',
+    items: [
+      'Cadastre os locais fisicos onde seus produtos ficam armazenados.',
+      'Cada deposito pode ter "Setores" - areas internas para organizar melhor (ex: Prateleira A, Geladeira, Corredor 3).',
+      'Para adicionar setores, digite o nome e clique "Adicionar" ao criar ou editar o deposito.',
+      'Voce pode ativar ou desativar depositos clicando no botao de status.',
+    ]
+  },
+  {
+    icon: ClipboardList, title: 'Estoque',
+    items: [
+      'Aqui voce ve todos os produtos que estao nos depositos, com a quantidade atual.',
+      'A coluna "Status" indica se o produto esta OK (verde) ou Baixo (vermelho) baseado no estoque minimo configurado.',
+      'Use o botao de seta para baixo para dar baixa - retirar unidades do estoque.',
+      'Na baixa, voce pode selecionar o setor do deposito para onde o produto esta indo.',
+      'O produto continua cadastrado mesmo apos a baixa total - apenas a quantidade e reduzida.',
+    ]
+  },
+  {
+    icon: UserCircle, title: 'Fornecedores',
+    items: [
+      'Cadastre todos os seus fornecedores com nome, CNPJ, email, telefone e endereco.',
+      'Use a busca para encontrar rapidamente por nome ou CNPJ.',
+      'Voce pode editar e excluir fornecedores a qualquer momento.',
+    ]
+  },
+  {
+    icon: FileText, title: 'Notas Fiscais',
+    items: [
+      'Esta e a aba principal para entrada de mercadorias no sistema.',
+      'Clique em "Nova Nota Fiscal" e escolha uma das 3 formas:',
+      '  - PDF/XML: Faca upload de um arquivo. XML (NFe) e parseado automaticamente. PDF e processado com inteligencia artificial.',
+      '  - OCR: Tire uma foto da nota e faca upload. A IA extrai os dados automaticamente.',
+      '  - Revisar: Confira os dados extraidos antes de salvar.',
+      'Apos salvar a nota, clique no icone de caixa (Processar Itens) para criar os produtos automaticamente e adicionar ao estoque.',
+      'Selecione o deposito de destino ao processar. Os produtos serao criados se nao existirem, e o estoque sera atualizado.',
+    ]
+  },
+  {
+    icon: BarChart3, title: 'Relatorios',
+    items: [
+      'Acesso exclusivo para Desenvolvedores e Gerentes.',
+      'DRE: Demonstrativo de Resultados mostrando receita, custo, lucro bruto e margem de lucro. Inclui grafico de barras.',
+      'Curva ABC: Classificacao dos produtos por faturamento. Classe A (80% do faturamento), B (15%) e C (5%).',
+      'Giro de Estoque: Mostra a rotatividade de cada produto - quantos foram vendidos, estoque atual, taxa de giro e dias de cobertura.',
+      'Use os botoes PDF e Excel para exportar os relatorios.',
+    ]
+  },
+  {
+    icon: Bell, title: 'Alertas e Notificacoes',
+    items: [
+      'Caixa de Entrada: Veja todas as notificacoes do sistema. Marque como lida ou marque todas de uma vez.',
+      'Configuracoes: Crie regras de alerta. Escolha o tipo (estoque baixo, nota pendente) e os canais (interna, email, SMS).',
+      'Estoque Minimo: Configure o estoque minimo de cada produto. Quando atingir esse valor, voce recebera uma notificacao automatica.',
+      'O alerta de estoque baixo e disparado quando a quantidade no deposito ficar igual ou menor que o minimo configurado.',
+    ]
+  },
+  {
+    icon: TrendingUp, title: 'Auditoria',
+    items: [
+      'Acesso exclusivo para Desenvolvedores e Gerentes.',
+      'Registra todas as acoes feitas no sistema: criacao, edicao, exclusao, transferencias, processamentos.',
+      'Use os filtros para buscar por data, usuario, tipo de acao ou entidade.',
+      'O ID completo e exibido para rastreabilidade.',
+      'Exporte todo o historico para Excel clicando em "Exportar Excel".',
+    ]
+  },
+  {
+    icon: Users, title: 'Usuarios',
+    items: [
+      'Acesso exclusivo para Desenvolvedores e Gerentes.',
+      'Crie novos usuarios com nome, email, senha e nivel de acesso.',
+      'Desenvolvedor: acesso total a todas as funcionalidades.',
+      'Gerente: acesso a relatorios, auditoria e gerenciamento de usuarios.',
+      'Operacional: acesso basico a produtos, estoque, notas fiscais e alertas.',
+      'Voce pode editar dados, alterar nivel de acesso, ativar/desativar e excluir usuarios.',
+    ]
+  },
 ];
 
 export const GuidePage = () => {
@@ -19,66 +107,32 @@ export const GuidePage = () => {
     <div className="p-4 md:p-8" data-testid="guide-page">
       <div className="mb-8">
         <h1 className="text-2xl md:text-4xl font-semibold font-primary text-zinc-900 tracking-tight">Guia do Sistema</h1>
-        <p className="mt-1 text-sm text-zinc-600">Passo a passo para utilizar o Gestao TJ</p>
+        <p className="mt-1 text-sm text-zinc-600">Explicacao detalhada de cada funcionalidade do Gestao TJ</p>
       </div>
 
-      <div className="space-y-4">
-        {steps.map((step, idx) => {
-          const Icon = step.icon;
+      <div className="space-y-6">
+        {sections.map((section, idx) => {
+          const Icon = section.icon;
           return (
-            <div key={idx} className="bg-white rounded-xl border border-zinc-200 shadow-sm p-5 md:p-6 flex items-start gap-4 hover:shadow-md transition-shadow">
-              <div className="h-10 w-10 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
-                <Icon className="h-5 w-5 text-blue-600" />
+            <div key={idx} className="bg-white rounded-xl border border-zinc-200 shadow-sm overflow-hidden">
+              <div className="flex items-center gap-3 p-5 bg-zinc-50 border-b border-zinc-200">
+                <div className="h-10 w-10 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
+                  <Icon className="h-5 w-5 text-blue-600" />
+                </div>
+                <h2 className="text-lg font-semibold text-zinc-900">{section.title}</h2>
               </div>
-              <div>
-                <h3 className="text-base md:text-lg font-semibold text-zinc-900">{step.title}</h3>
-                <p className="text-sm text-zinc-600 mt-1 leading-relaxed">{step.desc}</p>
+              <div className="p-5">
+                <ul className="space-y-2">
+                  {section.items.map((item, i) => (
+                    <li key={i} className={`text-sm text-zinc-700 leading-relaxed ${item.startsWith('  -') ? 'ml-4 text-zinc-600' : ''}`}>
+                      {item.startsWith('  -') ? item : <span>{item}</span>}
+                    </li>
+                  ))}
+                </ul>
               </div>
             </div>
           );
         })}
-      </div>
-
-      <div className="mt-8 bg-blue-50 border border-blue-200 rounded-xl p-5 md:p-6">
-        <h2 className="text-lg font-semibold text-blue-900 mb-3">Niveis de Acesso</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-white rounded-lg p-4 border border-blue-100">
-            <span className="inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 mb-2">DEV</span>
-            <p className="text-sm text-zinc-700">Acesso total: todas as funcionalidades, gerenciamento de usuarios, auditoria, exclusao de registros.</p>
-          </div>
-          <div className="bg-white rounded-lg p-4 border border-blue-100">
-            <span className="inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 mb-2">MASTER</span>
-            <p className="text-sm text-zinc-700">Gerencial: pode criar usuarios, ver relatorios e auditoria, gerenciar estoque e notas fiscais.</p>
-          </div>
-          <div className="bg-white rounded-lg p-4 border border-blue-100">
-            <span className="inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium bg-zinc-100 text-zinc-700 mb-2">USUARIO</span>
-            <p className="text-sm text-zinc-700">Operacional: cadastro de produtos, fornecedores, depositos, entrada de notas e controle de estoque.</p>
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-8 bg-zinc-100 border border-zinc-200 rounded-xl p-5 md:p-6">
-        <h2 className="text-lg font-semibold text-zinc-900 mb-3">Documentacao Tecnica</h2>
-        <div className="space-y-2 text-sm text-zinc-700">
-          <p><strong>Frontend:</strong> React 19 + Tailwind CSS + Shadcn UI + Recharts</p>
-          <p><strong>Backend:</strong> FastAPI + Motor (MongoDB async) + JWT Auth</p>
-          <p><strong>Banco de Dados:</strong> MongoDB</p>
-          <p><strong>IA/OCR:</strong> OpenAI GPT-4o (via Emergent LLM Key) para leitura de notas fiscais</p>
-          <p><strong>Email:</strong> SendGrid (configuravel via variaveis de ambiente)</p>
-          <p><strong>Relatorios:</strong> ReportLab (PDF) + OpenPyXL (Excel)</p>
-          <p><strong>XML:</strong> lxml para parsing nativo de NFe</p>
-        </div>
-        <div className="mt-4 p-4 bg-white rounded-lg border border-zinc-200">
-          <h3 className="text-sm font-semibold text-zinc-900 mb-2">Variaveis de Ambiente (Backend)</h3>
-          <pre className="text-xs font-mono text-zinc-700 whitespace-pre-wrap">
-{`MONGO_URL=mongodb://localhost:27017
-DB_NAME=gestao_tj_db
-JWT_SECRET=sua_chave_secreta
-EMERGENT_LLM_KEY=sua_chave_llm
-SENDGRID_API_KEY=sua_chave_sendgrid (opcional)
-SENDER_EMAIL=alertas@seudominio.com (opcional)`}
-          </pre>
-        </div>
       </div>
     </div>
   );

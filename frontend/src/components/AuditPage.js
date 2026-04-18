@@ -6,6 +6,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Download, Search } from 'lucide-react';
 import { toast } from 'sonner';
 
+const actionPT = { CREATE: 'Criar', UPDATE: 'Atualizar', DELETE: 'Excluir', TRANSFER: 'Transferir', ADJUST: 'Ajustar', PROCESS: 'Processar', CONVERT: 'Converter' };
+const entityPT = { user: 'Usuario', product: 'Produto', warehouse: 'Armazem', supplier: 'Fornecedor', invoice: 'Fatura', sale: 'Venda', order: 'Pedido', inventory: 'Inventario', alert_config: 'Alerta' };
+const actionColors = { CREATE: 'bg-green-100 text-green-700', UPDATE: 'bg-blue-100 text-blue-700', DELETE: 'bg-red-100 text-red-700', ADJUST: 'bg-yellow-100 text-yellow-700', TRANSFER: 'bg-purple-100 text-purple-700', PROCESS: 'bg-cyan-100 text-cyan-700', CONVERT: 'bg-indigo-100 text-indigo-700' };
+
+const formatDetails = (changes) => {
+  if (!changes || Object.keys(changes).length === 0) return '-';
+  const entries = Object.entries(changes);
+  return entries.map(([k, v]) => {
+    const keyPT = { warehouse_id: 'deposito', quantity: 'quantidade', email: 'email', role: 'nivel', name: 'nome', active: 'ativo', products_created: 'produtos criados', status: 'status', sale_number: 'numero da venda' };
+    return `${keyPT[k] || k}: ${v}`;
+  }).join(', ');
+};
+
 export const AuditPage = () => {
   const [logs, setLogs] = useState([]);
   const [filtered, setFiltered] = useState([]);
@@ -13,6 +26,8 @@ export const AuditPage = () => {
   const [search, setSearch] = useState('');
   const [filterAction, setFilterAction] = useState('all');
   const [filterEntity, setFilterEntity] = useState('all');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
 
   useEffect(() => { loadLogs(); }, []);
 
@@ -21,12 +36,14 @@ export const AuditPage = () => {
     if (search) { const s = search.toLowerCase(); f = f.filter(l => l.user_email?.toLowerCase().includes(s) || l.entity_id?.toLowerCase().includes(s) || l.entity_type?.toLowerCase().includes(s)); }
     if (filterAction !== 'all') f = f.filter(l => l.action === filterAction);
     if (filterEntity !== 'all') f = f.filter(l => l.entity_type === filterEntity);
+    if (dateFrom) { const from = new Date(dateFrom); f = f.filter(l => new Date(l.timestamp) >= from); }
+    if (dateTo) { const to = new Date(dateTo + 'T23:59:59'); f = f.filter(l => new Date(l.timestamp) <= to); }
     setFiltered(f);
-  }, [search, filterAction, filterEntity, logs]);
+  }, [search, filterAction, filterEntity, dateFrom, dateTo, logs]);
 
   const loadLogs = async () => {
     try { const res = await auditAPI.getLogs(); setLogs(res.data); setFiltered(res.data); }
-    catch { toast.error('Erro ao carregar logs de auditoria'); }
+    catch (err) { toast.error('Erro ao carregar auditoria'); }
     finally { setLoading(false); }
   };
 
@@ -34,15 +51,13 @@ export const AuditPage = () => {
     try {
       const res = await auditAPI.exportExcel();
       const url = window.URL.createObjectURL(new Blob([res.data]));
-      const link = document.createElement('a'); link.href = url; link.setAttribute('download', 'auditoria.xlsx');
-      document.body.appendChild(link); link.click(); link.remove();
+      const a = document.createElement('a'); a.href = url; a.download = 'auditoria.xlsx'; a.click(); a.remove();
       toast.success('Exportado com sucesso!');
-    } catch { toast.error('Erro ao exportar'); }
+    } catch (err) { toast.error('Erro ao exportar'); }
   };
 
   const actions = [...new Set(logs.map(l => l.action))];
   const entities = [...new Set(logs.map(l => l.entity_type))];
-  const actionColors = { CREATE: 'bg-green-100 text-green-700', UPDATE: 'bg-blue-100 text-blue-700', DELETE: 'bg-red-100 text-red-700', ADJUST: 'bg-yellow-100 text-yellow-700', TRANSFER: 'bg-purple-100 text-purple-700', PROCESS: 'bg-cyan-100 text-cyan-700', CONVERT: 'bg-indigo-100 text-indigo-700' };
 
   if (loading) return <div className="p-4 md:p-8">Carregando...</div>;
 
@@ -56,26 +71,27 @@ export const AuditPage = () => {
         <Button data-testid="export-audit-button" onClick={handleExport} variant="outline"><Download className="h-4 w-4 mr-2" />Exportar Excel</Button>
       </div>
 
-      {/* Filtros */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-6">
-        <div className="relative md:col-span-2">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-3 mb-4">
+        <div className="lg:col-span-2 relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
-          <Input data-testid="audit-search" placeholder="Buscar por usuario, entidade ou ID..." value={search} onChange={e => setSearch(e.target.value)} className="pl-10" />
+          <Input data-testid="audit-search" placeholder="Buscar..." value={search} onChange={e => setSearch(e.target.value)} className="pl-10" />
         </div>
         <Select value={filterAction} onValueChange={setFilterAction}>
-          <SelectTrigger data-testid="audit-filter-action"><SelectValue placeholder="Acao" /></SelectTrigger>
+          <SelectTrigger><SelectValue placeholder="Acao" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todas as acoes</SelectItem>
-            {actions.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}
+            {actions.map(a => <SelectItem key={a} value={a}>{actionPT[a] || a}</SelectItem>)}
           </SelectContent>
         </Select>
         <Select value={filterEntity} onValueChange={setFilterEntity}>
-          <SelectTrigger data-testid="audit-filter-entity"><SelectValue placeholder="Entidade" /></SelectTrigger>
+          <SelectTrigger><SelectValue placeholder="Entidade" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Todas as entidades</SelectItem>
-            {entities.map(e => <SelectItem key={e} value={e}>{e}</SelectItem>)}
+            <SelectItem value="all">Todas entidades</SelectItem>
+            {entities.map(e => <SelectItem key={e} value={e}>{entityPT[e] || e}</SelectItem>)}
           </SelectContent>
         </Select>
+        <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} placeholder="De" />
+        <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} placeholder="Ate" />
       </div>
 
       <p className="text-xs text-zinc-500 mb-3">{filtered.length} registros encontrados</p>
@@ -97,10 +113,10 @@ export const AuditPage = () => {
               <tr key={log.id} className="hover:bg-zinc-50 transition-colors">
                 <td className="px-4 py-3 text-sm text-zinc-600 whitespace-nowrap">{new Date(log.timestamp).toLocaleString('pt-BR')}</td>
                 <td className="px-4 py-3 text-sm text-zinc-900">{log.user_email}</td>
-                <td className="px-4 py-3"><span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${actionColors[log.action] || 'bg-zinc-100 text-zinc-700'}`}>{log.action}</span></td>
-                <td className="px-4 py-3 text-sm text-zinc-600 capitalize">{log.entity_type}</td>
+                <td className="px-4 py-3"><span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${actionColors[log.action] || 'bg-zinc-100 text-zinc-700'}`}>{actionPT[log.action] || log.action}</span></td>
+                <td className="px-4 py-3 text-sm text-zinc-600">{entityPT[log.entity_type] || log.entity_type}</td>
                 <td className="px-4 py-3 text-xs font-mono text-zinc-800 break-all max-w-[200px]">{log.entity_id}</td>
-                <td className="px-4 py-3 text-xs text-zinc-500 max-w-[200px] truncate">{log.changes ? JSON.stringify(log.changes) : '-'}</td>
+                <td className="px-4 py-3 text-xs text-zinc-600 max-w-[250px]">{formatDetails(log.changes)}</td>
               </tr>
             ))}
           </tbody>
