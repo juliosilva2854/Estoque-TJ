@@ -295,6 +295,8 @@ async def adjust_inventory(
     
     if existing:
         new_qty = existing['quantity'] + quantity
+        if new_qty < 0:
+            new_qty = 0
         await db.inventory.update_one(
             {"id": existing['id']},
             {"$set": {"quantity": new_qty, "updated_at": datetime.now(timezone.utc).isoformat()}}
