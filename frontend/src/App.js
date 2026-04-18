@@ -3,7 +3,6 @@ import "@/App.css";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Toaster } from 'sonner';
 import { authAPI } from './api';
-
 import { LoginPage } from './components/LoginPage';
 import { DashboardLayout } from './components/DashboardLayout';
 import { DashboardHome } from './components/DashboardHome';
@@ -11,21 +10,17 @@ import { ProductsPage } from './components/ProductsPage';
 import { InventoryPage } from './components/InventoryPage';
 import { SuppliersPage } from './components/SuppliersPage';
 import { InvoicesPage } from './components/InvoicesPage';
-import { SalesPage } from './components/SalesPage';
 import { ReportsPage } from './components/ReportsPage';
 import { AuditPage } from './components/AuditPage';
 import { UsersPage } from './components/UsersPage';
 import { WarehousesPage } from './components/WarehousesPage';
 import { AlertsPage } from './components/AlertsPage';
-import { OrdersPage } from './components/OrdersPage';
+import { GuidePage } from './components/GuidePage';
 
-const seedDatabase = async () => {
-  try { await authAPI.seed(); } catch {}
-};
+const seedDB = async () => { try { await authAPI.seed(); } catch {} };
 
 function App() {
-  useEffect(() => { seedDatabase(); }, []);
-
+  useEffect(() => { seedDB(); }, []);
   return (
     <div className="App">
       <Toaster position="top-right" richColors />
@@ -39,12 +34,11 @@ function App() {
             <Route path="inventory" element={<InventoryPage />} />
             <Route path="suppliers" element={<SuppliersPage />} />
             <Route path="invoices" element={<InvoicesPage />} />
-            <Route path="sales" element={<SalesPage />} />
-            <Route path="orders" element={<OrdersPage />} />
             <Route path="reports" element={<ReportsPage />} />
             <Route path="alerts" element={<AlertsPage />} />
             <Route path="audit" element={<AuditPage />} />
             <Route path="users" element={<UsersPage />} />
+            <Route path="guide" element={<GuidePage />} />
           </Route>
           <Route path="/" element={<Navigate to="/login" replace />} />
         </Routes>
@@ -52,5 +46,4 @@ function App() {
     </div>
   );
 }
-
 export default App;

@@ -30,6 +30,7 @@ class WarehouseBase(BaseModel):
     name: str
     location: str
     description: Optional[str] = None
+    sectors: List[str] = []
     active: bool = True
 
 class WarehouseCreate(WarehouseBase):
@@ -132,7 +133,7 @@ class SaleBase(BaseModel):
     subtotal: float
     discount: float = 0
     total: float
-    payment_method: str
+    payment_method: Optional[str] = None
     status: Literal["pending", "completed", "cancelled"] = "pending"
     type: Literal["venda", "pedido", "orcamento"] = "venda"
     notes: Optional[str] = None
@@ -252,6 +253,7 @@ class WarehouseUpdate(BaseModel):
     name: Optional[str] = None
     location: Optional[str] = None
     description: Optional[str] = None
+    sectors: Optional[List[str]] = None
     active: Optional[bool] = None
 
 

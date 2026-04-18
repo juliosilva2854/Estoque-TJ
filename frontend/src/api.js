@@ -1,122 +1,85 @@
 import axios from 'axios';
-
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
-
-const api = axios.create({ baseURL: API });
+const api = axios.create({ baseURL: `${BACKEND_URL}/api` });
 
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
-
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      window.location.href = '/login';
-    }
-    return Promise.reject(error);
+api.interceptors.response.use((r) => r, (error) => {
+  if (error.response?.status === 401) {
+    localStorage.removeItem('token'); localStorage.removeItem('user');
+    window.location.href = '/login';
   }
-);
+  return Promise.reject(error);
+});
 
 export const authAPI = {
-  login: (credentials) => api.post('/auth/login', credentials),
-  register: (userData) => api.post('/auth/register', userData),
-  getMe: () => api.get('/auth/me'),
+  login: (c) => api.post('/auth/login', c),
+  register: (d) => api.post('/auth/register', d),
   seed: () => api.post('/seed'),
 };
-
 export const usersAPI = {
   getAll: () => api.get('/users'),
-  update: (id, data) => api.patch(`/users/${id}`, data),
+  update: (id, d) => api.patch(`/users/${id}`, d),
   delete: (id) => api.delete(`/users/${id}`),
 };
-
 export const warehousesAPI = {
   getAll: () => api.get('/warehouses'),
-  create: (data) => api.post('/warehouses', data),
-  update: (id, data) => api.patch(`/warehouses/${id}`, data),
+  create: (d) => api.post('/warehouses', d),
+  update: (id, d) => api.patch(`/warehouses/${id}`, d),
   delete: (id) => api.delete(`/warehouses/${id}`),
 };
-
 export const suppliersAPI = {
   getAll: () => api.get('/suppliers'),
-  create: (data) => api.post('/suppliers', data),
-  update: (id, data) => api.patch(`/suppliers/${id}`, data),
+  create: (d) => api.post('/suppliers', d),
+  update: (id, d) => api.patch(`/suppliers/${id}`, d),
   delete: (id) => api.delete(`/suppliers/${id}`),
 };
-
 export const productsAPI = {
   getAll: () => api.get('/products'),
-  create: (data) => api.post('/products', data),
-  update: (id, data) => api.patch(`/products/${id}`, data),
+  create: (d) => api.post('/products', d),
+  update: (id, d) => api.patch(`/products/${id}`, d),
   delete: (id) => api.delete(`/products/${id}`),
+  transfer: (id, warehouseId, qty) => api.post(`/products/${id}/transfer?warehouse_id=${warehouseId}&quantity=${qty}`),
 };
-
 export const inventoryAPI = {
   getAll: () => api.get('/inventory'),
-  adjust: (productId, warehouseId, quantity) =>
-    api.post(`/inventory/adjust?product_id=${productId}&warehouse_id=${warehouseId}&quantity=${quantity}`),
+  adjust: (pid, wid, qty) => api.post(`/inventory/adjust?product_id=${pid}&warehouse_id=${wid}&quantity=${qty}`),
 };
-
 export const invoicesAPI = {
   getAll: () => api.get('/invoices'),
-  create: (data) => api.post('/invoices', data),
-  processOCR: (imageBase64) => api.post('/invoices/ocr', { image_base64: imageBase64 }),
-  uploadFile: (file) => {
-    const formData = new FormData();
-    formData.append('file', file);
-    return api.post('/invoices/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
-  },
+  create: (d) => api.post('/invoices', d),
+  processOCR: (b64) => api.post('/invoices/ocr', { image_base64: b64 }),
+  uploadFile: (file) => { const fd = new FormData(); fd.append('file', file); return api.post('/invoices/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } }); },
+  processItems: (invoiceId, warehouseId) => api.post(`/invoices/${invoiceId}/process-items?warehouse_id=${warehouseId}`),
 };
-
-export const salesAPI = {
-  getAll: () => api.get('/sales'),
-  create: (data) => api.post('/sales', data),
-};
-
-export const ordersAPI = {
-  getAll: (type) => api.get(`/orders${type ? `?type=${type}` : ''}`),
-  create: (data) => api.post('/orders', data),
-  update: (id, data) => api.patch(`/orders/${id}`, data),
-  convertToSale: (id) => api.post(`/orders/${id}/convert-to-sale`),
-  delete: (id) => api.delete(`/orders/${id}`),
-};
-
 export const dashboardAPI = {
   getStats: () => api.get('/dashboard/stats'),
   getAlerts: () => api.get('/dashboard/alerts'),
 };
-
 export const reportsAPI = {
-  getFinancial: (period) => api.get(`/reports/financial?period=${period}`),
-  getCashFlow: (period) => api.get(`/reports/cash-flow?period=${period}`),
-  exportPDF: (period) => api.get(`/reports/export/pdf?period=${period}`, { responseType: 'blob' }),
-  exportExcel: (period) => api.get(`/reports/export/excel?period=${period}`, { responseType: 'blob' }),
+  getFinancial: (p) => api.get(`/reports/financial?period=${p}`),
+  exportPDF: (p) => api.get(`/reports/export/pdf?period=${p}`, { responseType: 'blob' }),
+  exportExcel: (p) => api.get(`/reports/export/excel?period=${p}`, { responseType: 'blob' }),
   getABCCurve: () => api.get('/reports/abc-curve'),
   getInventoryTurnover: () => api.get('/reports/inventory-turnover'),
 };
-
-export const auditAPI = { getLogs: () => api.get('/audit') };
-
+export const auditAPI = {
+  getLogs: () => api.get('/audit'),
+  exportExcel: () => api.get('/audit/export', { responseType: 'blob' }),
+};
 export const alertsAPI = {
   getConfigs: () => api.get('/alerts/config'),
-  createConfig: (data) => api.post('/alerts/config', data),
-  updateConfig: (id, data) => api.patch(`/alerts/config/${id}`, data),
+  createConfig: (d) => api.post('/alerts/config', d),
+  updateConfig: (id, d) => api.patch(`/alerts/config/${id}`, d),
   deleteConfig: (id) => api.delete(`/alerts/config/${id}`),
-  checkStock: () => api.post('/alerts/check-stock'),
 };
-
 export const notificationsAPI = {
   getAll: () => api.get('/notifications'),
   getUnreadCount: () => api.get('/notifications/unread-count'),
   markRead: (id) => api.patch(`/notifications/${id}/read`),
   markAllRead: () => api.post('/notifications/read-all'),
-  send: (data) => api.post('/notifications/send', data),
 };
-
 export default api;

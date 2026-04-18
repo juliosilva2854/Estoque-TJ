@@ -622,6 +622,99 @@ async def get_inventory_turnover(current_user: dict = Depends(get_current_user))
     results.sort(key=lambda x: x['turnover_rate'], reverse=True)
     return {"items": results}
 
+@api_router.get("/audit/export")
+async def export_audit_logs(current_user: dict = Depends(get_current_user)):
+    await require_role(current_user, ["dev", "master"])
+    logs = await db.audit_logs.find({}, {"_id": 0}).sort('timestamp', -1).to_list(10000)
+    from report_export import generate_financial_excel
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
+    import io
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Auditoria"
+    headers = ['Data/Hora', 'Usuario', 'Acao', 'Entidade', 'ID', 'Detalhes']
+    hfont = Font(name='Calibri', size=11, bold=True, color='FFFFFF')
+    hfill = PatternFill(start_color='2563EB', end_color='2563EB', fill_type='solid')
+    for col, h in enumerate(headers, 1):
+        c = ws.cell(row=1, column=col, value=h)
+        c.font = hfont
+        c.fill = hfill
+    for i, log in enumerate(logs, 2):
+        ws.cell(row=i, column=1, value=log.get('timestamp', ''))
+        ws.cell(row=i, column=2, value=log.get('user_email', ''))
+        ws.cell(row=i, column=3, value=log.get('action', ''))
+        ws.cell(row=i, column=4, value=log.get('entity_type', ''))
+        ws.cell(row=i, column=5, value=log.get('entity_id', ''))
+        ws.cell(row=i, column=6, value=str(log.get('changes', '') or ''))
+    for col in ['A','B','C','D','E','F']:
+        ws.column_dimensions[col].width = 22
+    buf = io.BytesIO()
+    wb.save(buf)
+    return Response(content=buf.getvalue(),
+                    media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": "attachment; filename=auditoria.xlsx"})
+
+@api_router.post("/invoices/{invoice_id}/process-items")
+async def process_invoice_items_to_products(invoice_id: str, warehouse_id: str, current_user: dict = Depends(get_current_user)):
+    invoice_doc = await db.invoices.find_one({"id": invoice_id}, {"_id": 0})
+    if not invoice_doc:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    created = 0
+    for item in invoice_doc.get('items', []):
+        pname = item.get('product_name', '')
+        if not pname:
+            continue
+        sku = item.get('product_sku', '') or pname[:10].upper().replace(' ', '')
+        existing = await db.products.find_one({"$or": [{"sku": sku}, {"name": pname}]}, {"_id": 0})
+        if not existing:
+            prod_doc = {
+                "id": str(uuid.uuid4()), "name": pname, "sku": sku, "description": "",
+                "category": "", "unit": "UN", "min_stock": 0,
+                "cost_price": item.get('unit_price', 0), "sale_price": item.get('unit_price', 0),
+                "active": True, "created_at": datetime.now(timezone.utc).isoformat(),
+                "created_by": current_user['user_id']
+            }
+            await db.products.insert_one(prod_doc)
+            existing = prod_doc
+            created += 1
+        else:
+            existing = existing
+        pid = existing['id']
+        qty = item.get('quantity', 0)
+        inv_item = await db.inventory.find_one({"product_id": pid, "warehouse_id": warehouse_id}, {"_id": 0})
+        if inv_item:
+            new_qty = inv_item['quantity'] + qty
+            await db.inventory.update_one({"id": inv_item['id']}, {"$set": {"quantity": new_qty, "updated_at": datetime.now(timezone.utc).isoformat()}})
+        else:
+            await db.inventory.insert_one({
+                "id": str(uuid.uuid4()), "product_id": pid, "warehouse_id": warehouse_id,
+                "quantity": qty, "updated_at": datetime.now(timezone.utc).isoformat()
+            })
+    await db.invoices.update_one({"id": invoice_id}, {"$set": {"status": "processed"}})
+    await audit_logger.log(current_user['user_id'], current_user['email'], "PROCESS", "invoice", invoice_id, {"products_created": created})
+    return {"message": f"Itens processados. {created} novos produtos criados.", "products_created": created}
+
+@api_router.post("/products/{product_id}/transfer")
+async def transfer_product_to_warehouse(product_id: str, warehouse_id: str, quantity: float, current_user: dict = Depends(get_current_user)):
+    product = await db.products.find_one({"id": product_id}, {"_id": 0})
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    warehouse = await db.warehouses.find_one({"id": warehouse_id}, {"_id": 0})
+    if not warehouse:
+        raise HTTPException(status_code=404, detail="Warehouse not found")
+    inv_item = await db.inventory.find_one({"product_id": product_id, "warehouse_id": warehouse_id}, {"_id": 0})
+    if inv_item:
+        new_qty = inv_item['quantity'] + quantity
+        await db.inventory.update_one({"id": inv_item['id']}, {"$set": {"quantity": new_qty, "updated_at": datetime.now(timezone.utc).isoformat()}})
+    else:
+        await db.inventory.insert_one({
+            "id": str(uuid.uuid4()), "product_id": product_id, "warehouse_id": warehouse_id,
+            "quantity": quantity, "updated_at": datetime.now(timezone.utc).isoformat()
+        })
+    await audit_logger.log(current_user['user_id'], current_user['email'], "TRANSFER", "product", product_id, {"warehouse_id": warehouse_id, "quantity": quantity})
+    return {"message": f"Transferido {quantity} unidades para {warehouse['name']}"}
+
 @api_router.get("/audit", response_model=List[AuditLog])
 async def get_audit_logs(current_user: dict = Depends(get_current_user)):
     await require_role(current_user, ["dev", "master"])
