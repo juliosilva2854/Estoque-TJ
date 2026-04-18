@@ -69,6 +69,7 @@ class ProductBase(BaseModel):
     min_stock: float = 0
     cost_price: float = 0
     sale_price: float = 0
+    available_qty: float = 0
     active: bool = True
 
 class ProductCreate(ProductBase):

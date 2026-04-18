@@ -367,23 +367,34 @@ async def process_invoice_ocr(ocr_request: OCRRequest, current_user: dict = Depe
         
         image_content = ImageContent(image_base64=ocr_request.image_base64)
         
-        prompt_text = """Extract the following information from this Brazilian invoice image and return ONLY a valid JSON object with this structure:
+        prompt_text = """Analise esta imagem de nota fiscal brasileira com EXTREMA ATENCAO aos numeros e quantidades.
+
+INSTRUCOES CRITICAS:
+- Leia CADA item linha por linha
+- A QUANTIDADE (QTD) e o numero de unidades compradas - geralmente um numero inteiro ou com 3 casas decimais
+- O VALOR UNITARIO e o preco de UMA unidade do produto
+- O VALOR TOTAL do item = quantidade x valor unitario
+- NAO confunda quantidade com codigo do produto
+- Preste atencao em unidades como UN, KG, CX, PCT, LT
+
+Retorne SOMENTE um JSON valido neste formato exato:
 {
-  "invoice_number": "number",
-  "supplier_name": "supplier name",
+  "invoice_number": "numero da nota",
+  "supplier_name": "nome do fornecedor/emitente",
   "issue_date": "YYYY-MM-DD",
   "total_value": 0.0,
   "tax_value": 0.0,
   "items": [
     {
-      "product_name": "name",
+      "product_name": "descricao do produto",
+      "product_sku": "codigo do produto se visivel",
       "quantity": 0.0,
       "unit_price": 0.0,
       "total": 0.0
     }
   ]
 }
-Return ONLY the JSON, no explanations."""
+Retorne SOMENTE o JSON, sem explicacoes."""
         
         user_message = UserMessage(
             text=prompt_text,
@@ -925,7 +936,7 @@ async def upload_invoice_file(file: UploadFile = File(...), current_user: dict =
             
             image_content = ImageContent(image_base64=b64)
             
-            prompt_text = 'Extract the following information from this Brazilian invoice and return ONLY a valid JSON object with this structure: {"invoice_number": "number", "supplier_name": "name", "supplier_cnpj": "", "issue_date": "YYYY-MM-DD", "total_value": 0.0, "tax_value": 0.0, "items": [{"product_name": "name", "product_sku": "", "quantity": 0.0, "unit_price": 0.0, "total": 0.0, "tax": 0}]}. Return ONLY JSON.'
+            prompt_text = 'Analise esta nota fiscal brasileira com EXTREMA ATENCAO aos numeros. A QUANTIDADE e o numero de unidades compradas (nao confunda com codigo). O VALOR UNITARIO e o preco de 1 unidade. Retorne SOMENTE JSON: {"invoice_number": "numero", "supplier_name": "fornecedor", "supplier_cnpj": "", "issue_date": "YYYY-MM-DD", "total_value": 0.0, "tax_value": 0.0, "items": [{"product_name": "descricao", "product_sku": "codigo", "quantity": 0.0, "unit_price": 0.0, "total": 0.0, "tax": 0}]}. Retorne SOMENTE JSON.'
             
             user_message = UserMessage(text=prompt_text, file_contents=[image_content])
             response = await chat.send_message(user_message)
