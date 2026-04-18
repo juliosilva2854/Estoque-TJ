@@ -407,49 +407,6 @@ Return ONLY the JSON, no explanations."""
         logger.error(f"OCR processing error: {e}")
         raise HTTPException(status_code=500, detail=f"OCR processing failed: {str(e)}")
 
-@api_router.post("/sales", response_model=Sale)
-async def create_sale(sale_data: SaleCreate, current_user: dict = Depends(get_current_user)):
-    last_sale = await db.sales.find_one({}, {"_id": 0}, sort=[('created_at', -1)])
-    sale_number = f"VND{str(int(last_sale['sale_number'][3:]) + 1).zfill(6)}" if last_sale and 'sale_number' in last_sale else "VND000001"
-    
-    sale = Sale(
-        **sale_data.model_dump(),
-        sale_number=sale_number,
-        created_at=datetime.now(timezone.utc),
-        created_by=current_user['user_id']
-    )
-    
-    doc = sale.model_dump()
-    doc['created_at'] = doc['created_at'].isoformat()
-    
-    await db.sales.insert_one(doc)
-    
-    if sale.status == "completed":
-        for item in sale.items:
-            await adjust_inventory(
-                item.product_id,
-                sale.warehouse_id,
-                -item.quantity,
-                current_user
-            )
-    
-    await audit_logger.log(
-        current_user['user_id'],
-        current_user['email'],
-        "CREATE",
-        "sale",
-        sale.id
-    )
-    
-    return sale
-
-@api_router.get("/sales", response_model=List[Sale])
-async def get_sales(current_user: dict = Depends(get_current_user)):
-    sales = await db.sales.find({}, {"_id": 0}).to_list(5000)
-    for s in sales:
-        s['created_at'] = datetime.fromisoformat(s['created_at'])
-    return [Sale(**s) for s in sales]
-
 @api_router.get("/dashboard/stats", response_model=DashboardStats)
 async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
     total_products = await db.products.count_documents({"active": True})
@@ -982,34 +939,6 @@ async def upload_invoice_file(file: UploadFile = File(...), current_user: dict =
 
 # === REPORT EXPORT ENDPOINTS ===
 
-@api_router.get("/reports/cash-flow")
-async def get_cash_flow_report(period: str, current_user: dict = Depends(get_current_user)):
-    if period == "month":
-        start_date = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0).isoformat()
-        period_label = "Mes Atual"
-    else:
-        start_date = datetime.now(timezone.utc).replace(month=1, day=1, hour=0, minute=0, second=0).isoformat()
-        period_label = "Ano Atual"
-    
-    # Inflows: completed sales
-    sales = await db.sales.find({"created_at": {"$gte": start_date}, "status": "completed"}, {"_id": 0}).to_list(10000)
-    inflows = sum(s.get('total', 0) for s in sales)
-    inflow_details = [{"date": s.get('created_at', ''), "description": f"Venda {s.get('sale_number', '')}", "value": s.get('total', 0)} for s in sales[:20]]
-    
-    # Outflows: processed invoices (purchases)
-    invoices = await db.invoices.find({"created_at": {"$gte": start_date}, "type": "entrada"}, {"_id": 0}).to_list(10000)
-    outflows = sum(inv.get('total_value', 0) for inv in invoices)
-    outflow_details = [{"date": inv.get('created_at', ''), "description": f"NF {inv.get('invoice_number', '')}", "value": inv.get('total_value', 0)} for inv in invoices[:20]]
-    
-    return CashFlowReport(
-        period=period_label,
-        inflows=inflows,
-        outflows=outflows,
-        balance=inflows - outflows,
-        inflow_details=inflow_details,
-        outflow_details=outflow_details
-    )
-
 @api_router.get("/reports/export/pdf")
 async def export_financial_pdf(period: str, current_user: dict = Depends(get_current_user)):
     # Build report data
@@ -1079,106 +1008,6 @@ async def export_financial_excel(period: str, current_user: dict = Depends(get_c
     return Response(content=excel_bytes,
                     media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     headers={"Content-Disposition": f"attachment; filename=relatorio_{period}.xlsx"})
-
-# === ORDERS / QUOTES ENDPOINTS ===
-
-@api_router.post("/orders", response_model=Order)
-async def create_order(order_data: OrderCreate, current_user: dict = Depends(get_current_user)):
-    prefix = "PED" if order_data.type == "pedido" else "ORC"
-    last = await db.orders.find_one({"type": order_data.type}, {"_id": 0}, sort=[('created_at', -1)])
-    if last and 'order_number' in last:
-        num = int(last['order_number'][3:]) + 1
-    else:
-        num = 1
-    order_number = f"{prefix}{str(num).zfill(6)}"
-    
-    order = Order(
-        **order_data.model_dump(),
-        order_number=order_number,
-        created_at=datetime.now(timezone.utc),
-        created_by=current_user['user_id']
-    )
-    doc = order.model_dump()
-    doc['created_at'] = doc['created_at'].isoformat()
-    await db.orders.insert_one(doc)
-    
-    await audit_logger.log(current_user['user_id'], current_user['email'], "CREATE", "order", order.id)
-    return order
-
-@api_router.get("/orders")
-async def get_orders(type: Optional[str] = None, current_user: dict = Depends(get_current_user)):
-    query = {}
-    if type:
-        query["type"] = type
-    orders = await db.orders.find(query, {"_id": 0}).sort('created_at', -1).to_list(5000)
-    for o in orders:
-        o['created_at'] = datetime.fromisoformat(o['created_at'])
-    return [Order(**o) for o in orders]
-
-@api_router.patch("/orders/{order_id}")
-async def update_order(order_id: str, updates: OrderUpdate, current_user: dict = Depends(get_current_user)):
-    update_data = {k: v for k, v in updates.model_dump().items() if v is not None}
-    if not update_data:
-        raise HTTPException(status_code=400, detail="No fields to update")
-    result = await db.orders.update_one({"id": order_id}, {"$set": update_data})
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Order not found")
-    await audit_logger.log(current_user['user_id'], current_user['email'], "UPDATE", "order", order_id, update_data)
-    return {"message": "Order updated"}
-
-@api_router.post("/orders/{order_id}/convert-to-sale")
-async def convert_order_to_sale(order_id: str, current_user: dict = Depends(get_current_user)):
-    order_doc = await db.orders.find_one({"id": order_id}, {"_id": 0})
-    if not order_doc:
-        raise HTTPException(status_code=404, detail="Order not found")
-    if order_doc['status'] == 'converted':
-        raise HTTPException(status_code=400, detail="Order already converted")
-    if not order_doc.get('warehouse_id'):
-        raise HTTPException(status_code=400, detail="Warehouse is required to convert to sale")
-    
-    # Create sale from order
-    last_sale = await db.sales.find_one({}, {"_id": 0}, sort=[('created_at', -1)])
-    sale_number = f"VND{str(int(last_sale['sale_number'][3:]) + 1).zfill(6)}" if last_sale and 'sale_number' in last_sale else "VND000001"
-    
-    sale_doc = {
-        "id": str(uuid.uuid4()),
-        "sale_number": sale_number,
-        "customer_name": order_doc.get('customer_name', ''),
-        "customer_document": order_doc.get('customer_document', ''),
-        "warehouse_id": order_doc['warehouse_id'],
-        "items": order_doc['items'],
-        "subtotal": order_doc['subtotal'],
-        "discount": order_doc.get('discount', 0),
-        "total": order_doc['total'],
-        "payment_method": order_doc.get('payment_method', 'dinheiro'),
-        "status": "completed",
-        "type": "venda",
-        "notes": order_doc.get('notes', ''),
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "created_by": current_user['user_id']
-    }
-    await db.sales.insert_one(sale_doc)
-    
-    # Update order status
-    await db.orders.update_one({"id": order_id}, {"$set": {"status": "converted"}})
-    
-    # Adjust inventory
-    for item in order_doc['items']:
-        existing = await db.inventory.find_one({"product_id": item['product_id'], "warehouse_id": order_doc['warehouse_id']}, {"_id": 0})
-        if existing:
-            new_qty = existing['quantity'] - item['quantity']
-            await db.inventory.update_one({"id": existing['id']}, {"$set": {"quantity": new_qty, "updated_at": datetime.now(timezone.utc).isoformat()}})
-    
-    await audit_logger.log(current_user['user_id'], current_user['email'], "CONVERT", "order", order_id, {"sale_number": sale_number})
-    return {"message": f"Order converted to sale {sale_number}", "sale_number": sale_number}
-
-@api_router.delete("/orders/{order_id}")
-async def delete_order(order_id: str, current_user: dict = Depends(get_current_user)):
-    result = await db.orders.delete_one({"id": order_id})
-    if result.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="Order not found")
-    await audit_logger.log(current_user['user_id'], current_user['email'], "DELETE", "order", order_id)
-    return {"message": "Order deleted"}
 
 @api_router.post("/seed")
 async def seed_database():
