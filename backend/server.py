@@ -25,7 +25,7 @@ from models import (
 )
 from auth import hash_password, verify_password, create_token, decode_token
 from audit import AuditLogger
-from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
+from openai import OpenAI
 from email_service import send_email, build_stock_alert_email, build_invoice_pending_email, build_sale_completed_email
 from report_export import generate_financial_pdf, generate_financial_excel
 from nfe_parser import parse_nfe_xml
@@ -355,17 +355,11 @@ async def get_invoices(current_user: dict = Depends(get_current_user)):
 @api_router.post("/invoices/ocr")
 async def process_invoice_ocr(ocr_request: OCRRequest, current_user: dict = Depends(get_current_user)):
     try:
-        api_key = os.environ.get('EMERGENT_LLM_KEY')
+        api_key = os.environ.get('OPENAI_API_KEY')
         if not api_key:
-            raise HTTPException(status_code=500, detail="API key not configured")
+            raise HTTPException(status_code=500, detail="OPENAI_API_KEY nao configurada no .env")
         
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"ocr_{current_user['user_id']}_{datetime.now(timezone.utc).timestamp()}",
-            system_message="You are an expert at extracting data from Brazilian fiscal invoices (NFe). Extract all relevant information in JSON format."
-        ).with_model("openai", "gpt-4o")
-        
-        image_content = ImageContent(image_base64=ocr_request.image_base64)
+        client_ai = OpenAI(api_key=api_key)
         
         prompt_text = """Analise esta imagem de nota fiscal brasileira com EXTREMA ATENCAO aos numeros e quantidades.
 
@@ -396,14 +390,20 @@ Retorne SOMENTE um JSON valido neste formato exato:
 }
 Retorne SOMENTE o JSON, sem explicacoes."""
         
-        user_message = UserMessage(
-            text=prompt_text,
-            file_contents=[image_content]
+        response = client_ai.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "Voce e um especialista em extrair dados de notas fiscais brasileiras (NFe). Extraia todas as informacoes relevantes em formato JSON."},
+                {"role": "user", "content": [
+                    {"type": "text", "text": prompt_text},
+                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{ocr_request.image_base64}"}}
+                ]}
+            ],
+            max_tokens=4000,
+            temperature=0
         )
         
-        response = await chat.send_message(user_message)
-        
-        response_text = response.strip()
+        response_text = response.choices[0].message.content.strip()
         if response_text.startswith('```json'):
             response_text = response_text[7:]
         if response_text.startswith('```'):
@@ -418,7 +418,7 @@ Retorne SOMENTE o JSON, sem explicacoes."""
         
     except Exception as e:
         logger.error(f"OCR processing error: {e}")
-        raise HTTPException(status_code=500, detail=f"OCR processing failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Erro no OCR: {str(e)}")
 
 @api_router.get("/dashboard/stats", response_model=DashboardStats)
 async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
@@ -922,26 +922,29 @@ async def upload_invoice_file(file: UploadFile = File(...), current_user: dict =
     
     elif filename_lower.endswith('.pdf'):
         try:
-            api_key = os.environ.get('EMERGENT_LLM_KEY')
+            api_key = os.environ.get('OPENAI_API_KEY')
             if not api_key:
-                raise HTTPException(status_code=500, detail="LLM API key not configured")
+                raise HTTPException(status_code=500, detail="OPENAI_API_KEY nao configurada no .env")
             
             b64 = base64.b64encode(content).decode('utf-8')
-            
-            chat = LlmChat(
-                api_key=api_key,
-                session_id=f"pdf_{current_user['user_id']}_{datetime.now(timezone.utc).timestamp()}",
-                system_message="You are an expert at extracting data from Brazilian fiscal invoices (NFe). Extract all relevant information in JSON format."
-            ).with_model("openai", "gpt-4o")
-            
-            image_content = ImageContent(image_base64=b64)
+            client_ai = OpenAI(api_key=api_key)
             
             prompt_text = 'Analise esta nota fiscal brasileira com EXTREMA ATENCAO aos numeros. A QUANTIDADE e o numero de unidades compradas (nao confunda com codigo). O VALOR UNITARIO e o preco de 1 unidade. Retorne SOMENTE JSON: {"invoice_number": "numero", "supplier_name": "fornecedor", "supplier_cnpj": "", "issue_date": "YYYY-MM-DD", "total_value": 0.0, "tax_value": 0.0, "items": [{"product_name": "descricao", "product_sku": "codigo", "quantity": 0.0, "unit_price": 0.0, "total": 0.0, "tax": 0}]}. Retorne SOMENTE JSON.'
             
-            user_message = UserMessage(text=prompt_text, file_contents=[image_content])
-            response = await chat.send_message(user_message)
+            response = client_ai.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {"role": "system", "content": "Voce e um especialista em extrair dados de notas fiscais brasileiras."},
+                    {"role": "user", "content": [
+                        {"type": "text", "text": prompt_text},
+                        {"type": "image_url", "image_url": {"url": f"data:application/pdf;base64,{b64}"}}
+                    ]}
+                ],
+                max_tokens=4000,
+                temperature=0
+            )
             
-            response_text = response.strip()
+            response_text = response.choices[0].message.content.strip()
             if response_text.startswith('```json'):
                 response_text = response_text[7:]
             if response_text.startswith('```'):

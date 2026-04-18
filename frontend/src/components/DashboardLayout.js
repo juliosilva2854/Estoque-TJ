@@ -49,7 +49,7 @@ export const DashboardLayout = () => {
       <div className={`fixed lg:static inset-y-0 left-0 z-50 w-64 bg-white border-r border-zinc-200 flex flex-col transform transition-transform duration-200 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
         <div className="h-14 flex items-center justify-between px-4 border-b border-zinc-200">
           <div className="flex items-center gap-2">
-            <img src="https://static.prod-images.emergentagent.com/jobs/497729d9-514c-4803-80ed-8a3ab244b06b/images/458af5ac6c2ba33b5f4d33a8680f7a6b75c879b0b4f7c72992f0f5d5019b7edc.png" alt="Logo" className="h-7 w-7" />
+            <div className="h-7 w-7 rounded bg-blue-600 flex items-center justify-center text-white font-bold text-sm">TJ</div>
             <span className="text-lg font-semibold font-primary text-zinc-900">Gestao TJ</span>
           </div>
           <button onClick={() => setSidebarOpen(false)} className="lg:hidden p-1 text-zinc-600 hover:bg-zinc-100 rounded" data-testid="close-sidebar-button"><X className="h-5 w-5" /></button>
