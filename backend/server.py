@@ -25,7 +25,10 @@ from models import (
 )
 from auth import hash_password, verify_password, create_token, decode_token
 from audit import AuditLogger
-from openai import OpenAI
+from google import genai
+from google.genai import types
+from PIL import Image
+import io
 from email_service import send_email, build_stock_alert_email, build_invoice_pending_email, build_sale_completed_email
 from report_export import generate_financial_pdf, generate_financial_excel
 from nfe_parser import parse_nfe_xml
@@ -38,6 +41,10 @@ client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
 audit_logger = AuditLogger(db)
+
+# Configuração do Gemini (Novo SDK)
+gemini_api_key = os.environ.get('GEMINI_API_KEY')
+client_ai = genai.Client(api_key=gemini_api_key) if gemini_api_key else None
 
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
@@ -355,11 +362,12 @@ async def get_invoices(current_user: dict = Depends(get_current_user)):
 @api_router.post("/invoices/ocr")
 async def process_invoice_ocr(ocr_request: OCRRequest, current_user: dict = Depends(get_current_user)):
     try:
-        api_key = os.environ.get('OPENAI_API_KEY')
-        if not api_key:
-            raise HTTPException(status_code=500, detail="OPENAI_API_KEY nao configurada no .env")
+        if not os.environ.get('GEMINI_API_KEY'):
+            raise HTTPException(status_code=500, detail="GEMINI_API_KEY nao configurada no .env")
         
-        client_ai = OpenAI(api_key=api_key)
+        # Converte o Base64 que veio do Frontend para uma imagem que o Gemini entende
+        image_bytes = base64.b64decode(ocr_request.image_base64)
+        img = Image.open(io.BytesIO(image_bytes))
         
         prompt_text = """Analise esta imagem de nota fiscal brasileira com EXTREMA ATENCAO aos numeros e quantidades.
 
@@ -390,30 +398,22 @@ Retorne SOMENTE um JSON valido neste formato exato:
 }
 Retorne SOMENTE o JSON, sem explicacoes."""
         
-        response = client_ai.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": "Voce e um especialista em extrair dados de notas fiscais brasileiras (NFe). Extraia todas as informacoes relevantes em formato JSON."},
-                {"role": "user", "content": [
-                    {"type": "text", "text": prompt_text},
-                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{ocr_request.image_base64}"}}
-                ]}
-            ],
-            max_tokens=4000,
-            temperature=0
+        # Chama o modelo atualizado usando o novo SDK do Gemini (2026)
+        response = client_ai.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=[prompt_text, img]
         )
         
-        response_text = response.choices[0].message.content.strip()
+        # Limpa as tags markdown do JSON de retorno
+        response_text = response.text.strip()
         if response_text.startswith('```json'):
             response_text = response_text[7:]
         if response_text.startswith('```'):
             response_text = response_text[3:]
         if response_text.endswith('```'):
             response_text = response_text[:-3]
-        response_text = response_text.strip()
         
-        extracted_data = json.loads(response_text)
-        
+        extracted_data = json.loads(response_text.strip())
         return extracted_data
         
     except Exception as e:
@@ -448,7 +448,7 @@ async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
         product = await db.products.find_one({"id": item['product_id']}, {"_id": 0})
         if product and item['quantity'] <= product.get('min_stock', 0):
             low_stock_count += 1
-    
+            
     pending_invoices = await db.invoices.count_documents({"status": "pending"})
     
     return DashboardStats(
@@ -919,32 +919,25 @@ async def upload_invoice_file(file: UploadFile = File(...), current_user: dict =
             return {"source": "xml", "data": parsed}
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
-    
+            
     elif filename_lower.endswith('.pdf'):
         try:
-            api_key = os.environ.get('OPENAI_API_KEY')
-            if not api_key:
-                raise HTTPException(status_code=500, detail="OPENAI_API_KEY nao configurada no .env")
-            
-            b64 = base64.b64encode(content).decode('utf-8')
-            client_ai = OpenAI(api_key=api_key)
+            if not os.environ.get('GEMINI_API_KEY'):
+                raise HTTPException(status_code=500, detail="GEMINI_API_KEY nao configurada no .env")
             
             prompt_text = 'Analise esta nota fiscal brasileira com EXTREMA ATENCAO aos numeros. A QUANTIDADE e o numero de unidades compradas (nao confunda com codigo). O VALOR UNITARIO e o preco de 1 unidade. Retorne SOMENTE JSON: {"invoice_number": "numero", "supplier_name": "fornecedor", "supplier_cnpj": "", "issue_date": "YYYY-MM-DD", "total_value": 0.0, "tax_value": 0.0, "items": [{"product_name": "descricao", "product_sku": "codigo", "quantity": 0.0, "unit_price": 0.0, "total": 0.0, "tax": 0}]}. Retorne SOMENTE JSON.'
             
-            response = client_ai.chat.completions.create(
-                model="gpt-4o",
-                messages=[
-                    {"role": "system", "content": "Voce e um especialista em extrair dados de notas fiscais brasileiras."},
-                    {"role": "user", "content": [
-                        {"type": "text", "text": prompt_text},
-                        {"type": "image_url", "image_url": {"url": f"data:application/pdf;base64,{b64}"}}
-                    ]}
-                ],
-                max_tokens=4000,
-                temperature=0
+            # O novo SDK usa types.Part para formatar o PDF em bytes nativamente
+            response = client_ai.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=[
+                    prompt_text,
+                    types.Part.from_bytes(data=content, mime_type='application/pdf')
+                ]
             )
             
-            response_text = response.choices[0].message.content.strip()
+            # Limpa as tags markdown do JSON de retorno
+            response_text = response.text.strip()
             if response_text.startswith('```json'):
                 response_text = response_text[7:]
             if response_text.startswith('```'):
@@ -954,12 +947,13 @@ async def upload_invoice_file(file: UploadFile = File(...), current_user: dict =
             
             extracted = json.loads(response_text.strip())
             return {"source": "pdf_ocr", "data": extracted}
+            
         except Exception as e:
             logger.error(f"PDF parsing error: {e}")
             raise HTTPException(status_code=500, detail=f"PDF parsing failed: {str(e)}")
     else:
         raise HTTPException(status_code=400, detail="Unsupported file type. Use PDF or XML.")
-
+                            
 # === REPORT EXPORT ENDPOINTS ===
 
 @api_router.get("/reports/export/pdf")
