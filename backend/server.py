@@ -1,5 +1,6 @@
 from fastapi import FastAPI, APIRouter, Depends, HTTPException, status, Header, UploadFile, File, BackgroundTasks
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, FileResponse
+from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -1076,6 +1077,38 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ==========================================
+# CONFIGURAÇÃO: SERVIR O FRONTEND NO BACKEND
+# ==========================================
+
+# 1. Definimos onde a pasta build (que você copiou do React) deve estar
+frontend_build_path = ROOT_DIR / "build"
+
+# 2. Verificamos se a pasta existe antes de tentar servir, para não dar erro
+if frontend_build_path.exists():
+    
+    # Monta a pasta 'static' (onde ficam os JS, CSS e imagens do React)
+    app.mount("/static", StaticFiles(directory=str(frontend_build_path / "static")), name="static")
+    
+    # Rota "Pega Tudo": Qualquer link que o usuário digitar vai cair aqui
+    @app.get("/{full_path:path}")
+    async def serve_frontend(full_path: str):
+        # Proteção: Se a pessoa tentou acessar uma rota da API que não existe, devolve erro de API
+        if full_path.startswith("api/"):
+            raise HTTPException(status_code=404, detail="API route not found")
+        
+        # Se for um arquivo na raiz do frontend (ex: favicon.ico, manifest.json, logo.png)
+        file_path = frontend_build_path / full_path
+        if file_path.is_file():
+            return FileResponse(str(file_path))
+        
+        # Para todo o resto (telas do sistema), entrega o index.html do React
+        return FileResponse(str(frontend_build_path / "index.html"))
+else:
+    logger.warning("Pasta 'build' não encontrada na raiz do backend. O visual do site não será servido.")
+
 
 @app.on_event("shutdown")
 async def shutdown_db_client():

@@ -17,16 +17,30 @@ import { WarehousesPage } from './components/WarehousesPage';
 import { AlertsPage } from './components/AlertsPage';
 import { GuidePage } from './components/GuidePage';
 
-const seedDB = async () => { try { await authAPI.seed(); } catch {} };
+const seedDB = async () => { try { await authAPI.seed(); } catch { } };
 
 function App() {
   useEffect(() => { seedDB(); }, []);
+
+  // Verifica se existe um token salvo no navegador
+  // (Isso significa que o usuário já fez login e não precisa ver a tela de login de novo)
+  const isAuthenticated = !!localStorage.getItem('token');
+
   return (
     <div className="App">
       <Toaster position="top-right" richColors />
       <BrowserRouter>
         <Routes>
+          {/* Rota principal inteligente: Logado vai pro Dashboard, Deslogado vai pro Login */}
+          <Route
+            path="/"
+            element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Navigate to="/login" replace />}
+          />
+
+          {/* Rota de Login */}
           <Route path="/login" element={<LoginPage />} />
+
+          {/* Rotas Privadas (Dashboard e seus filhos) */}
           <Route path="/dashboard" element={<DashboardLayout />}>
             <Route index element={<DashboardHome />} />
             <Route path="products" element={<ProductsPage />} />
@@ -40,10 +54,13 @@ function App() {
             <Route path="users" element={<UsersPage />} />
             <Route path="guide" element={<GuidePage />} />
           </Route>
-          <Route path="/" element={<Navigate to="/login" replace />} />
+
+          {/* Rota curinga: Se digitar uma URL que não existe, joga de volta pra raiz */}
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
     </div>
   );
 }
+
 export default App;
